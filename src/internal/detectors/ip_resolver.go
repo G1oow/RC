@@ -55,17 +55,25 @@ func (irs *IPResolverStage) quickConnectivityTest(ctx *types.PipelineContext, ip
 	bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// 测试HTTPS端口443的连通性
-	conn, err := dialFunc(bgCtx, ip+":443")
+	// 测试HTTPS端口443的连通性（IPv6 字面量必须带方括号，见 dialAddress）
+	conn, err := dialFunc(bgCtx, dialAddress(ip, "443"))
 	if err != nil {
 		// 如果HTTPS不可达，尝试HTTP端口80
-		conn, err = dialFunc(bgCtx, ip+":80")
+		conn, err = dialFunc(bgCtx, dialAddress(ip, "80"))
 		if err != nil {
 			return false
 		}
 	}
 	conn.Close()
 	return true
+}
+
+// dialAddress 拼装可直接拨号的 host:port。
+// IPv6 字面量必须加方括号：直接 ip+":443" 会拼出 "2001:db8::1:443"，
+// net.Dial 会以 "too many colons in address" 瞬间失败且不发出任何报文，
+// 导致只有 AAAA 记录的域名被误判为「网络不可达」。
+func dialAddress(ip, port string) string {
+	return net.JoinHostPort(ip, port)
 }
 
 // resolveIP 解析IP地址
