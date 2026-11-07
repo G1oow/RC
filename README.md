@@ -1,4 +1,4 @@
-# Reality 目标检测（reality-checker）
+# Reality 目标检测 reality-checker
 
 自动扫描并筛选适合做 **Xray / sing-box REALITY 伪装目标（fallback SNI）** 的真实网站域名。
 
@@ -56,9 +56,85 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $env:REF='main'; irm
 4. 自动探测本机出口 IP：只有 IPv4 或只有 IPv6 就直接采用；**双栈时让你选 1) IPv4 / 2) IPv6**（选 IPv6 会附加 `-6`）；都探测不到则提示手动输入；
 5. 打印完整运行命令，问一句「现在开始扫描？」，回车即开始（默认不跑）。
 
-全程只往指定目录写文件，不改动系统配置。全自动场景（无终端、`curl | bash` 到 CI）会自动降级为默认值，不会卡住。
+全程只往指定目录写文件，不改动系统配置。全自动场景（无终端、`curl | bash` 到 CI）会自动降级为默认值，不会卡住。装完后可执行 [`rc`](#rc-面板vps-开荒向导) 进面板做 SSH 加固与目标扫描。
 
 > 探测走 `api4.ipify.org` / `api6.ipify.org`，失败时回退 `icanhazip.com`。入口 IP 只用于反查 ASN 网段，不会外传。
+
+---
+
+## rc 面板（VPS 开荒向导）
+
+> 标签：`#面板` `#启动方式`
+
+`rc` 是配套的单文件管理面板：一条命令装到 `/usr/local/bin/rc` 并直接进面板，之后输入 `rc`（或大写 `RC`）即可再次打开。SSH 加固、体检调优、目标筛选都在一个菜单里，不用记参数。
+
+### 安装与启动
+
+```bash
+# 安装到 /usr/local/bin/rc，装完直接进面板
+curl -LfsS https://raw.githubusercontent.com/G1oow/reality-checker-main/main/rc.sh \
+  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+```
+
+以后只需：
+
+```bash
+rc
+```
+
+首次在仓库内执行、或 `curl | bash` 执行时，脚本会先把自身装到 `/usr/local/bin/rc`，再打开面板；重复执行是幂等的。
+
+### 面板功能
+
+| 分类 | 编号 | 功能 |
+|---|---|---|
+| SSH 加固 | 1 | 写入公钥 + 改 SSH 端口 + 放行防火墙（阶段 0） |
+|  | 2 | 只改 SSH 端口 |
+|  | 3 | 关闭密码登录（阶段 0b，需先确认新端口可登入） |
+|  | 4 | 回滚 SSH 配置 |
+| 体检与调优 | 5 | TCP 质量检测（TcpQuality） |
+|  | 6 | NQ 测试（NodeQuality） |
+|  | 7 | TCP 调优（tcpfit） |
+| 目标筛选 | 8 | Reality 伪装目标扫描（reality-checker） |
+|  | 9 | 重装 reality-checker |
+| 维护 | 10 | 默认设置（端口、公钥、扫描目录、条数、DRY_RUN） |
+|  | 11 | 更新 rc |
+|  | 12 | 查看执行日志 |
+| 危险 | 13 | 卸载 rc |
+| 退出 | 0 | 退出 |
+
+### 非交互子命令
+
+```bash
+rc ssh           # 阶段 0：公钥 + 端口
+rc ssh-close     # 阶段 0b：关闭密码登录
+rc tcpq          # TCP 质量检测
+rc score         # NQ 测试（NodeQuality）
+rc tune          # TCP 调优
+rc reality       # Reality 目标扫描
+rc status        # 各组件状态
+rc rollback      # 回滚 SSH 配置
+rc update        # 更新 rc 自身
+rc uninstall     # 卸载 rc
+```
+
+旧的阶段写法 `./vps-init.sh 0 | 0b | 1 | 2 | 3 | 4 | 5 | rollback` 仍然可用，`vps-init.sh` 现在只是转发到 `rc.sh` 的兼容壳。
+
+### 参数与试跑
+
+默认值持久化在 `/etc/rc-manager/rc.conf`（`0600`），同名环境变量优先级更高：
+
+```bash
+SSH_PORT=22022 rc ssh                    # 指定端口
+SSH_PUBKEY_FILE=/root/k.pub rc ssh       # 从文件读公钥
+DRY_RUN=1 rc ssh                         # 只打印，不落盘
+```
+
+改 SSH 前请务必：先在云厂商安全组放行新端口 → 保持当前会话不断开 → 另开终端 `ssh -p <新端口> root@<VPS_IP>` 验证 → 确认能登入后再 `rc ssh-close`。配置校验失败会自动回滚，回滚记录在 `/root/vps-init-backup`。
+
+### 卸载
+
+面板 `13` 或 `rc uninstall`，只删 `rc`、`RC`、`/etc/rc-manager` 与日志；已装的 reality-checker、tcpfit 和 SSH 备份目录都保留。
 
 ---
 
@@ -162,7 +238,8 @@ cat file.csv | ./reality-checker-main pipe
 | `data/` | 离线规则库（必须与主程序同级） |
 | `file.csv` | 历史扫描结果样例（已脱敏，IP/域名均为示例值），可直接 `pipe` 喂入 |
 | `install.sh` / `install.ps1` | 一键部署脚本 |
-| `vps-init.sh` | 新 VPS 开荒脚本（公钥/改端口/测速/调优/选目标/建节点，分段幂等） |
+| `rc.sh` | `rc` 面板主脚本（装到 `/usr/local/bin/rc`，SSH 加固 / 体检 / 选目标） |
+| `vps-init.sh` | 兼容壳，旧阶段参数 `0/0b/1-5/rollback` 转发到 `rc.sh` |
 | `src/` | 完整源码（Go + React，含 build.sh / build.ps1） |
 
 ---
