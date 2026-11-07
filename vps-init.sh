@@ -4,8 +4,7 @@
 # 旧用法仍然可用：
 #   ./vps-init.sh 0 | 0b | 1 | 2 | 3 | 4 | 5 | rollback
 # 推荐的用法是安装后直接进面板：
-#   curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-#     -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+#   curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 #
 # 本壳只做转发，不含逻辑；完整功能见同目录 rc.sh。
 
@@ -36,5 +35,5 @@ if [[ -x /usr/local/bin/rc ]]; then
 fi
 
 printf '\033[31mfail\033[0m 找不到 rc.sh，也没安装 rc。先执行：\n' >&2
-printf '  curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc\n' >&2
+printf '  curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash\\n' >&2
 exit 1

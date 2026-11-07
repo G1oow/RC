@@ -77,14 +77,13 @@ The panel changes system state: with `DRY_RUN=1` every action is printed instead
 
 ## Install
 
-Debian / Ubuntu, as root, one command and you land in the menu:
+Debian / Ubuntu as root, one line and you land in the menu:
 
 ```bash
-curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-The script installs the panel at `/usr/local/bin/rc` and creates the `/usr/local/bin/RC` symlink, so both `rc` and `RC` open the menu. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
+The script installs itself at `/usr/local/bin/rc`, creates the `/usr/local/bin/RC` symlink and opens the menu; use `| sudo bash` when you are not root, or `| bash -s -- install-self` to install without starting. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
 
 ## Subcommands
 

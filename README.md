@@ -77,14 +77,13 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
 ## 安装
 
-Debian / Ubuntu，root 权限，一条命令装完直接进面板：
+Debian / Ubuntu，root 权限，一行装完直接进面板：
 
 ```bash
-curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-脚本会把面板装到 `/usr/local/bin/rc`，同时创建 `/usr/local/bin/RC` 软链接，之后输入 `rc` 或 `RC` 都能进菜单。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
+脚本会把自己装到 `/usr/local/bin/rc`，创建 `/usr/local/bin/RC` 软链接，然后直接打开菜单；非 root 用 `| sudo bash`，只想安装不启动用 `| bash -s -- install-self`。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
 
 ## 子命令
 
