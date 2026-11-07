@@ -892,7 +892,7 @@ menu_header() {
  |  _ \ / ___|
  | |_) | |
  |  _ <| |___
- |_| \_\\____|  VPS 聚合面板
+ |_| \_\____|  VPS 聚合面板
 BANNER
   printf '%b\n' "$NC"
   if [[ $DRY_RUN == 1 ]]; then
