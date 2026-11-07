@@ -31,7 +31,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 | 目标筛选 | `8` Reality 目标扫描 | 自动探测本机出口 IP，调用扫描引擎按 ASN 网段扫描并输出带星级的候选域名 |
 | 目标筛选 | `9` 重装扫描引擎 | 引擎缺失或损坏时按需重装到 `RC_DIR` |
 | 维护 | `10` 默认设置 / `11` 更新 rc / `12` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限；自更新面板；查看 `/var/log/rc-manager.log` |
-| 危险 | `13` 卸载 rc | 卸载面板自身，不动已加固的 SSH 配置与扫描引擎 |
+| 危险 | `13` 卸载 rc | 删除 `rc`、`RC` 软链接、`/etc/rc-manager` 与日志；已装的引擎、tcpfit、SSH 改动与备份目录全部保留 |
 
 面板对系统是有副作用的：`DRY_RUN=1` 下所有改动只打印不执行，第一次使用建议先试跑一遍。
 
@@ -44,7 +44,7 @@ curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
   -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
 ```
 
-之后随时输入 `rc`（或 `RC`）进菜单。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
+脚本会把面板装到 `/usr/local/bin/rc`，同时创建 `/usr/local/bin/RC` 软链接，之后输入 `rc` 或 `RC` 都能进菜单。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
 
 ## 子命令
 
@@ -66,7 +66,7 @@ curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
 | `rc uninstall` | 卸载面板 |
 | `rc help` | 显示帮助 |
 
-旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令。
+旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 原为 sb 面板，现已不再联动）。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
 
 ## 面板与引擎
 

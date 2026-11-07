@@ -31,7 +31,7 @@ The panel holds no scanning logic itself: picking targets is delegated to the bu
 | Target selection | `8` REALITY target scan | Probes the local egress IP, drives the engine across the ASN's prefixes, prints ranked candidates |
 | Target selection | `9` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
 | Maintenance | `10` defaults / `11` update rc / `12` view log | Edit SSH port, key, scan directory and scan limit; self-update the panel; read `/var/log/rc-manager.log` |
-| Danger | `13` uninstall rc | Removes the panel only, leaving hardened SSH config and the engine untouched |
+| Danger | `13` uninstall rc | Removes `rc`, the `RC` symlink, `/etc/rc-manager` and the log; the installed engine, tcpfit, SSH changes and backups all stay |
 
 The panel changes system state: with `DRY_RUN=1` every action is printed instead of executed, which is the recommended way to try it first.
 
@@ -44,7 +44,7 @@ curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
   -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
 ```
 
-After that, type `rc` (or `RC`) to open the menu. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
+The script installs the panel at `/usr/local/bin/rc` and creates the `/usr/local/bin/RC` symlink, so both `rc` and `RC` open the menu. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
 
 ## Subcommands
 
@@ -66,7 +66,7 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc uninstall` | Uninstall the panel |
 | `rc help` | Show help |
 
-Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above.
+Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above (`5`, the old sb panel entry, is no longer wired). The `vps-init.sh` file at the repository root is only a compatibility shim that forwards to `rc.sh`.
 
 ## Panel and engine
 
