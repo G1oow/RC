@@ -472,7 +472,9 @@ backup_file() {
 }
 
 reload_sshd() {
-  if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+  if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
+    # 先停 service，否则 restart 会因「already active」被拒
+    run systemctl stop ssh.service || true
     run systemctl restart ssh.socket
   elif [[ -f /lib/systemd/system/ssh.service || -f /usr/lib/systemd/system/ssh.service || -f /etc/init.d/ssh ]]; then
     run systemctl reload ssh
@@ -515,6 +517,9 @@ apply_ssh_port() {
     else
       printf '[Socket]\nListenStream=\nListenStream=%s\n' "$SSH_PORT" >"$SOCKET_DROPIN"
     fi
+    # drop-in 变更后 socket 必须重启才能生效；此时由它拉起的 ssh.service 仍 active，
+    # systemd 会以「Socket service ssh.service already active, refusing」拒绝，故先停服务
+    run systemctl stop ssh.service || true
     run systemctl daemon-reload
     return 0
   fi
@@ -563,7 +568,16 @@ verify_and_reload() {
       die '已回滚'
     fi
   fi
-  reload_sshd
+  # 重载本身也可能失败（端口被占等），失败同样回滚，别把机器留在半挂状态
+  if [[ $DRY_RUN == 1 ]]; then
+    reload_sshd
+    return 0
+  fi
+  if ! reload_sshd; then
+    warn '重载失败，回滚'
+    if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then rollback_socket; else rollback_sshd; fi
+    die '已回滚'
+  fi
 }
 
 # ---------------------------------------------------------------- 阶段 0 / 0b
@@ -572,6 +586,8 @@ stage0() {
   need_root
   step "阶段 0 / SSH 加固：公钥 + 端口 $SSH_PORT"
   prompt_pubkey || return 1
+  # 已有端口时先问一句，回车沿用；这样才能交互改端口
+  prompt_port || return 1
   write_pubkey
   apply_ssh_port
   open_firewall
@@ -878,8 +894,12 @@ menu_header() {
  |  _ <| |___
  |_| \_\\____|  VPS 开荒面板
 BANNER
-  printf '%s\n' "$NC"
-  printf '  rc v%s   (%s)\n' "$RC_VERSION" "${DRY_RUN/1/DRY_RUN 试跑}"
+  printf '%b\n' "$NC"
+  if [[ $DRY_RUN == 1 ]]; then
+    printf '  rc v%s   (DRY_RUN 试跑)\n' "$RC_VERSION"
+  else
+    printf '  rc v%s   (实机执行)\n' "$RC_VERSION"
+  fi
   [[ $DRY_RUN == 1 ]] && printf '\033[33m  DRY_RUN=1：所有改动只打印不执行\033[0m\n'
   printf '\n'
   status_brief
