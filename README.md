@@ -7,7 +7,7 @@
 <p align="center">面向 REALITY SNI 伪装目标的检测与选型工具链，附带一键部署与运维脚本。</p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <a href="./README.zh-CN.md">简体中文</a>
+  <a href="./README.en.md">English</a> | <a href="./README.md">简体中文</a>
 </p>
 
 <p align="center">

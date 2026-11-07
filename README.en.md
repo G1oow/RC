@@ -7,7 +7,7 @@
 <p align="center">A Go toolchain that discovers, probes and ranks REALITY SNI camouflage targets, shipped with one-command VPS deployment.</p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <a href="./README.zh-CN.md">简体中文</a>
+  <a href="./README.en.md">English</a> | <a href="./README.md">简体中文</a>
 </p>
 
 <p align="center">
