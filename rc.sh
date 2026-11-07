@@ -19,7 +19,7 @@
 #   rc rollback-cancel  取消已排定的自动回滚
 #   rc install-self 把本脚本安装/修复到 /usr/local/bin/rc
 #   rc update       更新 rc 自身
-#   rc uninstall    卸载 rc + 已装引擎 + tcpfit（含 iperf3）
+#   rc uninstall    卸载 rc + 已装引擎 + tcpfit（含 iperf3）；卸载 tcpfit 前先问是否回滚调优
 #   rc uninstall <engine|tcpfit|iperf3>   只卸载某个模块
 #
 # 兼容旧阶段参数：0 / 0b / 1 / 2 / 3 / 4 / 5 仍可用。
@@ -706,12 +706,32 @@ uninstall_engine() {
   log_record "uninstall engine dir=${RC_DIR}"
 }
 
+# tcpfit 是否因为用户选择「保留调优」而被留下，供 uninstall() 决定要不要连带删 iperf3
+TCPFIT_KEPT=0
+
+# tcpfit 的 uninstall 内部必然先 cmd_rollback（没有只删脚本不回滚的开关），
+# 所以卸载前必须问一次：用户要保留调优时直接不卸，别替他把内核参数还原掉。
 uninstall_tcpfit() {
   step '卸载 tcpfit'
+  TCPFIT_KEPT=0
   if ! command -v tcpfit >/dev/null 2>&1; then ok 'tcpfit 未安装，跳过'; return 0; fi
 
-  warn 'tcpfit 自带卸载会回滚 sysctl / initcwnd / 整形并删除自身'
-  printf '    保留调优存档（/var/lib/tcpfit，之后仍可 archive restore）？[Y/n]: '
+  warn 'tcpfit 把卸载和回滚绑在一起：uninstall 会还原 sysctl / initcwnd / 整形'
+  printf '    卸载前回滚内核调优？[y/N]: '
+  local rollback=0
+  case "$(read_ans n)" in
+    y | Y | yes | YES) rollback=1 ;;
+  esac
+  if [[ $rollback == 0 ]]; then
+    TCPFIT_KEPT=1
+    ok '已保留内核调优，本次不卸载 tcpfit'
+    printf '    它没有「只删脚本、不动调优」的卸载方式，要保留调优就留着 tcpfit；\n'
+    printf '    想撤销调优先执行 tcpfit rollback，确认机器正常后再回来卸载。\n'
+    log_record 'uninstall tcpfit skipped rollback=no'
+    return 0
+  fi
+
+  printf '    保留调优存档（/var/lib/tcpfit，重装 tcpfit 后仍可 archive restore）？[Y/n]: '
   local keep=1
   case "$(read_ans y)" in
     n | N | no | NO) keep=0 ;;
@@ -808,8 +828,8 @@ uninstall() {
   - $CONF_DIR（含持久化配置与安装标记）
   - $LOG_FILE
   - 扫描引擎：$RC_DIR
-  - tcpfit：$(tcpfit_state)
-  - iperf3：$(iperf3_state)
+  - tcpfit：$(tcpfit_state)（卸载前会问是否回滚内核调优，默认不回滚、保留 tcpfit）
+  - iperf3：$(iperf3_state)（tcpfit 被保留时一并保留）
 保留：
   - SSH 加固改动与备份目录 $BACKUP_ROOT（需要还原请先跑 rc rollback）
   - /root/rc-backup 下的资产库备份
@@ -825,7 +845,11 @@ EOF
   # 先卸模块（要用到 CONF_DIR 里的 iperf3 安装标记），最后再删面板自身
   uninstall_engine || warn '引擎卸载未完成'
   uninstall_tcpfit || warn 'tcpfit 卸载未完成'
-  uninstall_iperf3 || warn 'iperf3 卸载未完成'
+  if [[ ${TCPFIT_KEPT:-0} == 1 ]]; then
+    warn 'tcpfit 已按你的选择保留，iperf3 一并留下'
+  else
+    uninstall_iperf3 || warn 'iperf3 卸载未完成'
+  fi
 
   if ! rm -f -- "$SELF" "$ALIAS" 2>/dev/null; then
     warn "删除失败（只读根分区？）：$SELF"
@@ -1693,6 +1717,7 @@ rc —— RC：VPS 聚合运维面板
   uninstall [all|engine|tcpfit|iperf3|conf]
                卸载：默认删除面板 + 已装引擎 + tcpfit + iperf3；
                带模块名时只卸载该模块
+               卸 tcpfit 前会问是否回滚内核调优，默认保留（保留时 tcpfit 不删）
   help         显示本帮助
 
 兼容旧参数: 0 / 0b / 1 / 2 / 3 / 4（5 原为 sb 面板，现已不再联动）

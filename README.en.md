@@ -73,7 +73,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 | Target selection | `8` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
 | Target selection | `9` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
 | Maintenance | `10` defaults / `11` update rc / `12` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel; read `/var/log/rc-manager.log` |
-| Danger | `13` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups and the asset-database backup stay |
+| Danger | `13` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups and the asset-database backup stay. Before uninstalling tcpfit the panel asks whether to roll back the kernel tuning — the default is **no rollback** (choosing to keep the tuning keeps both tcpfit and iperf3) |
 | Danger | `14` uninstall a single module | Remove just one: scanning engine / tcpfit / iperf3 / rc config and log |
 
 The panel changes system state: with `DRY_RUN=1` every action is printed instead of executed, which is the recommended way to try it first.
