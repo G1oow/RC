@@ -441,6 +441,51 @@ func (s *PostgresStore) GetTargetsByASN(asn, country string, maxAge time.Duratio
 	return records, rows.Err()
 }
 
+// GetTargetsByCountry 按国家召回未过期的有效资产（同地区回退的第一层：本地历史资产）
+func (s *PostgresStore) GetTargetsByCountry(country string, maxAge time.Duration) ([]*types.TargetRecord, error) {
+	countryNorm := strings.ToUpper(strings.TrimSpace(country))
+	if countryNorm == "" {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT domain, asn, country, ip, port, handshake_ms, cert_days, cert_expire_at, tags, status_code,
+		       page_title, is_cdn, is_hot, is_default_page, default_page_type,
+		       stars, is_active, check_fail_count, first_seen_at, last_checked_at
+		FROM reality_targets
+		WHERE country = $1 AND is_active = TRUE
+	`
+	args := []any{countryNorm}
+	argIdx := 2
+
+	if maxAge > 0 {
+		query += fmt.Sprintf(" AND last_checked_at >= $%d", argIdx)
+		args = append(args, time.Now().Add(-maxAge))
+		argIdx++
+	}
+	query += " ORDER BY stars DESC, handshake_ms ASC"
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*types.TargetRecord
+	for rows.Next() {
+		rec, err := scanPostgresTargetRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+
+	return records, rows.Err()
+}
+
 // GetAllTargets 查询数据库中全部有效资产
 func (s *PostgresStore) GetAllTargets() ([]*types.TargetRecord, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

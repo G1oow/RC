@@ -15,6 +15,7 @@ type Store interface {
 	UpsertTarget(record *types.TargetRecord) error
 	UpsertTargets(records []*types.TargetRecord) error
 	GetTargetsByASN(asn, country string, maxAge time.Duration) ([]*types.TargetRecord, error)
+	GetTargetsByCountry(country string, maxAge time.Duration) ([]*types.TargetRecord, error)
 	GetAllTargets() ([]*types.TargetRecord, error)
 	QueryTargets(opts types.TargetQueryOptions) ([]*types.TargetRecord, int, error)
 	UpdateTargetActive(domain string, active bool) error

@@ -482,14 +482,15 @@ func (s *AutoScanner) scanSingleCIDR(
 		timeout = 3
 	}
 
-	s.scannerEngine.ScanCIDRStreamAdaptive(
+	enableIPv6, ipv6Budget := s.scanFamilyOptions(cidr)
+	s.scannerEngine.ScanCIDRStreamAdaptiveWithOptions(
 		ctx,
 		cidr,
 		startIP,
 		443,
 		threads,
 		timeout,
-		false,
+		enableIPv6,
 		s.limiter,
 		subChan,
 		func(n int, ip string) {
@@ -520,6 +521,7 @@ func (s *AutoScanner) scanSingleCIDR(
 				s.events.OnScanRecord(probe)
 			}
 		},
+		scanner.ScanOptions{IPv6Budget: ipv6Budget},
 	)
 
 	close(subChan)
@@ -560,6 +562,23 @@ func (s *AutoScanner) hasHitTargetLimit() bool {
 	return len(s.suitableResults) >= s.config.MaxTargets
 }
 
+// DefaultIPv6ProbeBudget IPv6 大网段（主机位 >= 62）的默认探针预算。
+// 与 scanner.DefaultIPv6Budget 保持一致：稀疏采样不会走完 2^64 个地址，
+// 进度总量必须按预算计，否则进度条与断点统计都会失真。
+const DefaultIPv6ProbeBudget = scanner.DefaultIPv6Budget
+
+// scanFamilyOptions 按网段协议族决定是否启用 IPv6 探测，并给出 IPv6 探针预算
+func (s *AutoScanner) scanFamilyOptions(cidr string) (bool, int) {
+	budget := s.config.Filter.IPv6Budget
+	if budget <= 0 {
+		budget = DefaultIPv6ProbeBudget
+	}
+	if p, err := netip.ParsePrefix(cidr); err == nil && p.Addr().Is4() {
+		return false, budget
+	}
+	// 非 CIDR（单 IP / 域名）或 IPv6 网段：IPv6 探测必须打开
+	return true, budget
+}
 // CalculateTotalIPs 计算一组 CIDR 或单 IP 的总数量（支持 IPv4 和 IPv6，支持去重/越界大数）
 func CalculateTotalIPs(cidrs []string) int64 {
 	return CalculateRemainingIPs(cidrs, nil)
@@ -607,8 +626,14 @@ func CalculateRemainingIPs(cidrs []string, checkpoints map[string]*storage.Check
 		} else {
 			ones := p.Bits()
 			hostBits := 128 - ones
-			if hostBits < 62 {
+			switch {
+			case hostBits <= 0:
+				total += 1
+			case hostBits < 62:
 				total += int64(1) << hostBits
+			default:
+				// IPv6 大网段按探针预算计（稀疏采样，不会穷举 2^64 个地址）
+				total += int64(DefaultIPv6ProbeBudget)
 			}
 		}
 	}

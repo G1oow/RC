@@ -456,6 +456,49 @@ func (s *TargetStore) GetTargetsByASN(asn, country string, maxAge time.Duration)
 	return results, rows.Err()
 }
 
+// GetTargetsByCountry 按国家召回未过期的有效资产（同地区回退的第一层：本地历史资产）
+func (s *TargetStore) GetTargetsByCountry(country string, maxAge time.Duration) ([]*types.TargetRecord, error) {
+	countryNorm := strings.ToUpper(strings.TrimSpace(country))
+	if countryNorm == "" {
+		return nil, nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+		SELECT domain, asn, country, ip, port, handshake_ms, cert_days, cert_expire_at, tags, status_code,
+		       page_title, is_cdn, is_hot, is_default_page, default_page_type,
+		       stars, is_active, check_fail_count, first_seen_at, last_checked_at
+		FROM reality_targets
+		WHERE country = ? AND is_active = 1
+	`
+	args := []interface{}{countryNorm}
+
+	if maxAge > 0 {
+		query += " AND last_checked_at >= ?"
+		args = append(args, time.Now().Add(-maxAge))
+	}
+	query += " ORDER BY stars DESC, handshake_ms ASC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*types.TargetRecord
+	for rows.Next() {
+		rec, err := scanTargetRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, rec)
+	}
+
+	return results, rows.Err()
+}
+
 // GetAllTargets 获取数据库中全部资产记录
 func (s *TargetStore) GetAllTargets() ([]*types.TargetRecord, error) {
 	s.mu.RLock()

@@ -87,6 +87,19 @@ graph TD
 - **令牌桶（Token Bucket）**：限制单机向目标 ASN 的总并发 PPS（Packets Per Second）与并发 TCP 握手数；
 - **端口快速回收**：TCP 连接关闭时一律启用 `SetLinger(0)`，配合 `TIME_WAIT` 快速释放，防止宿主机 Ephemeral Ports 端口耗尽。
 
+### 4. IPv6 网段：确定性伪随机 IID 稀疏采样
+- IPv6 的主机位通常是 64 位（`/64`），从网段基地址顺序递增既扫不完也没有意义：基地址是 subnet-router anycast，真实主机散布在整个 IID 空间；
+- 引擎对 IPv6 前缀改为**按序号确定性派生**候选地址：`SHA256(前缀字节 || 序号)` 填充主机位，同一个前缀每次产生的序列一致；
+- 单网段探针预算 `reality_filter.ipv6_budget`（默认 4096），断点续扫时通过重放序列定位 `last_ip`，因此不需要给 `scan_checkpoints` 加字段；
+- 进度统计对主机位 ≥ 62 的网段按预算计入，避免 `/64` 的总量显示为 0；
+- 排查顺序：先调大 `--ipv6-budget`，再加 `--threads`；IPv6 命中率本身是概率问题，不是「扫了就一定有」。
+
+### 5. 同 ASN 不足时的同地区回退（`auto` 交互路径）
+- 「同地区」= 入口 IP 的 ISO 两位国家码（项目现有元数据只有国家维度）；
+- 第一层：`store.GetTargetsByCountry` 召回同国家的历史资产，按当前过滤策略复核后直接计入；
+- 第二层：`asn.RegistryManager` 的同国家 ASN（排除入口 ASN 与纯 CDN），按 `Priority` 降序取 `--region-asns`（默认 5）个，逐个拉前缀、按协议族与国家过滤后独立跑一次扫描 pass（`task_key = "{国家}_REGION_{ASN}"`，各自独立断点）；
+- `--check-all` 与 `--no-region-fallback` 下不触发；RIPEstat 的国家维度数据源（country-asns / country-resource-list）已不可用，回退覆盖度取决于本地 ASN 注册表。
+
 ---
 
 ## 四、 研发计划与交付里程碑

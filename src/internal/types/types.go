@@ -353,6 +353,7 @@ type FilterConfig struct {
 	ScanThreads          int      `yaml:"scan_threads"`           // 网络扫描并发协程数 (默认 200)
 	ScanTimeout          int      `yaml:"scan_timeout"`           // 单 IP 探测超时秒数 (默认 3)
 	Verbose              bool     `yaml:"verbose"`                // 详细输出模式 (输出每一条扫描记录到 stdout)
+	IPv6Budget           int      `yaml:"ipv6_budget"`            // 单个 IPv6 网段的探针预算 (默认 4096；主机位按确定性伪随机 IID 稀疏采样)
 
 	// --- 阶段二/进阶偏好过滤策略 (主要用于查库、排序打分与智能推荐) ---
 	RequireNoCDN         bool     `yaml:"require_no_cdn"`         // 是否强制排除 CDN

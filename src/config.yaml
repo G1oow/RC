@@ -9,7 +9,9 @@ log:
 # 数据库存储引擎配置
 database:
   # 可选驱动类型: "sqlite" (默认，单机轻量零依赖) 或 "postgres" (推荐高并发与分布式扫描)
-  driver: "postgres"
+  # 注意：默认必须是 sqlite —— 新装 VPS 上没有 PostgreSQL，改成 postgres 会让
+  # 资产库/缓存快速通道/同地区回退全部静默失效（引擎会退化到内存模式）。
+  driver: "sqlite"
 
   # SQLite 专用配置 (当 driver 为 sqlite 时生效)
   sqlite:
@@ -54,6 +56,9 @@ filter:
   # 5. 网络扫描性能调优
   scan_threads: 200 # 网络扫描并发协程数 (默认 200，在高性能 VPS 上可设 500~1000)
   scan_timeout: 3 # 单 IP 握手超时秒数 (默认 3 秒，死 IP 快速熔断推荐 1~2 秒)
+  # 6. IPv6 网段探针预算: IPv6 主机位按确定性伪随机 IID 稀疏采样，单网段最多探测这么多个地址
+  #    (默认 4096；≥ /62 的大网段按此预算计入进度。扫不出来时先调大这个值再调 --threads)
+  ipv6_budget: 4096
 
   # ==================== 阶段二：进阶偏好过滤策略 ====================
   # 4. 强制非 CDN 过滤 (true: 剔除 Cloudflare/Akamai/Fastly 等 CDN 节点，防止 VPS 变成公网免费反代)

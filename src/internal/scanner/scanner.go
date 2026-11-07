@@ -417,6 +417,12 @@ func (s *Scanner) ScanCIDRStreamWithProbe(ctx context.Context, cidrStr string, s
 	s.ScanCIDRStreamAdaptive(ctx, cidrStr, startIP, port, threads, timeout, enableIPv6, nil, outChan, onProgress, onProbe)
 }
 
+// ScanOptions 扫描细粒度选项
+type ScanOptions struct {
+	// IPv6Budget 单个 IPv6 网段的探针预算（<=0 使用 DefaultIPv6Budget）
+	IPv6Budget int
+}
+
 // ScanCIDRStreamAdaptive 执行并发扫描，支持自适应 RateLimiter 动态调谐、断点续扫与探活明细回调
 func (s *Scanner) ScanCIDRStreamAdaptive(ctx context.Context, cidrStr string, startIP string, port int, threads int, timeout int, enableIPv6 bool,
 	limiter RateLimiter,
@@ -424,7 +430,18 @@ func (s *Scanner) ScanCIDRStreamAdaptive(ctx context.Context, cidrStr string, st
 	onProgress func(n int, currentIP string),
 	onProbe func(probe *ProbeResult),
 ) {
-	hostChan := IterateCIDR(ctx, cidrStr, startIP, enableIPv6)
+	s.ScanCIDRStreamAdaptiveWithOptions(ctx, cidrStr, startIP, port, threads, timeout, enableIPv6, limiter, outChan, onProgress, onProbe, ScanOptions{})
+}
+
+// ScanCIDRStreamAdaptiveWithOptions 在 ScanCIDRStreamAdaptive 基础上接受扫描选项（如 IPv6 探针预算）
+func (s *Scanner) ScanCIDRStreamAdaptiveWithOptions(ctx context.Context, cidrStr string, startIP string, port int, threads int, timeout int, enableIPv6 bool,
+	limiter RateLimiter,
+	outChan chan<- *ScanResult,
+	onProgress func(n int, currentIP string),
+	onProbe func(probe *ProbeResult),
+	opts ScanOptions,
+) {
+	hostChan := IterateCIDRWithOptions(ctx, cidrStr, startIP, enableIPv6, opts.IPv6Budget)
 
 	if threads <= 0 {
 		threads = 50

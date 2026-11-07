@@ -220,6 +220,9 @@ func mergeConfig(defaultConfig *types.Config, fileConfig *types.Config) {
 	if effectiveFilter.ScanTimeout == 0 && fileConfig.RealityFilter.ScanTimeout > 0 {
 		effectiveFilter.ScanTimeout = fileConfig.RealityFilter.ScanTimeout
 	}
+	if effectiveFilter.IPv6Budget == 0 && fileConfig.RealityFilter.IPv6Budget > 0 {
+		effectiveFilter.IPv6Budget = fileConfig.RealityFilter.IPv6Budget
+	}
 	if effectiveFilter.MaxHandshakeMS == 0 && fileConfig.RealityFilter.MaxHandshakeMS > 0 {
 		effectiveFilter.MaxHandshakeMS = fileConfig.RealityFilter.MaxHandshakeMS
 	}
@@ -263,6 +266,9 @@ func mergeConfig(defaultConfig *types.Config, fileConfig *types.Config) {
 	}
 	if effectiveFilter.ScanTimeout > 0 {
 		defaultConfig.Filter.ScanTimeout = effectiveFilter.ScanTimeout
+	}
+	if effectiveFilter.IPv6Budget > 0 {
+		defaultConfig.Filter.IPv6Budget = effectiveFilter.IPv6Budget
 	}
 	defaultConfig.Filter.RequireNoCDN = effectiveFilter.RequireNoCDN
 	defaultConfig.Filter.RequireNoHot = effectiveFilter.RequireNoHot
@@ -369,6 +375,7 @@ func getDefaultConfig() *types.Config {
 		CacheMaxDays:         7,
 		ScanThreads:          200,
 		ScanTimeout:          3,
+		IPv6Budget:           4096,
 		RequireNoCDN:         true,
 		MaxHandshakeMS:       800,
 		RequireNoHot:         true,
