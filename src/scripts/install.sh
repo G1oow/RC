@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-REPO="qualvey/one-reality"
+REPO="G1oow/RC"
 BIN_INSTALL_PATH="/usr/local/bin/reality-checker"
 BIN_ALIAS_PATH="/usr/local/bin/reasni"
 SERVICE_HELPER_PATH="/usr/local/bin/reasni-service"
@@ -450,10 +450,10 @@ case "$ACTION" in
         ;;
     update)
         echo "正在更新 RealityChecker 服务..."
-        curl -fsSL https://raw.githubusercontent.com/qualvey/one-reality/main/scripts/install.sh | bash
+        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash
         ;;
     uninstall)
-        curl -fsSL https://raw.githubusercontent.com/qualvey/one-reality/main/scripts/install.sh | bash -s -- --uninstall
+        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash -s -- --uninstall
         ;;
     *)
         echo "用法: reasni-service {start|stop|restart|status|log|config|update|uninstall}"
