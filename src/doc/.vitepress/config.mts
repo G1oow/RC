@@ -3,8 +3,8 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 
 export default withMermaid(
   defineConfig({
-    title: 'RealityChecker Docs',
-    description: '全自动高可用 REALITY 伪装目标检测与全网扫描引擎',
+    title: 'RC Docs',
+    description: 'VPS 聚合运维面板：SSH 加固、连通体检与调优、REALITY 目标筛选',
     lang: 'zh-CN',
     base: '/',
     themeConfig: {
@@ -68,7 +68,7 @@ export default withMermaid(
         ]
       },
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/V2RaySSR/RealityChecker' }
+        { icon: 'github', link: 'https://github.com/G1oow/RC' }
       ],
       search: {
         provider: 'local'
@@ -79,7 +79,7 @@ export default withMermaid(
       },
       footer: {
         message: 'Released under the MIT License.',
-        copyright: 'Copyright © 2026 RealityChecker Team'
+        copyright: 'Copyright © 2026 RC'
       }
     },
     vite: {

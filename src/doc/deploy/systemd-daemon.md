@@ -1,6 +1,6 @@
 # Systemd 守护进程服务与极速安装分发指南
 
-RealityChecker / Reasni 内置支持 24 小时全网 ASN 自动化扫描与 HTTP API / Web 控制台服务（`daemon` 模式）。为便于在 Linux 服务器及嵌入式设备（如 NanoPi、树莓派、香橙派、Armbian 单板盒子）上快速上线与稳定运行，本项目提供生产级 Systemd 守护进程服务单元与一键安装运维脚本。
+RC 的 `daemon` 模式对外只提供命令行扫描能力：24 小时全网 ASN 自动化扫描、断点续扫与资产入库。为便于在 Linux 服务器及嵌入式设备（如 NanoPi、树莓派、香橙派、Armbian 单板盒子）上快速上线与稳定运行，本项目提供生产级 Systemd 守护进程服务单元与一键安装运维脚本。
 
 ---
 
@@ -14,8 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.s
 ```
 
 ```bash [自定义参数安装]
-# 指定鉴权 Token 并限制并发为 150 (适合软路由/嵌入式盒子)
-curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- --token my-secret-token -t 150
+# 限制并发为 150 (适合软路由/嵌入式盒子)
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- -t 150
 ```
 
 ```bash [非 CN 网络强制拉起]
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.s
 只需直接编辑 `/etc/default/reasni`：
 ```bash
 # /etc/default/reasni
-DAEMON_OPTS="--host 127.0.0.1 --port 8881 --token <YOUR_API_TOKEN> -t 150 --interval 10"
+DAEMON_OPTS="-t 150 --interval 10"
 ```
 保存后执行重启即可生效：
 ```bash
@@ -110,7 +110,7 @@ reasni-service restart
 
 ```ini
 [Unit]
-Description=RealityChecker ASN Scanner Daemon
+Description=RC ASN Scanner Daemon
 Documentation=https://github.com/G1oow/RC
 After=network-online.target
 Wants=network-online.target
@@ -168,5 +168,5 @@ journalctl -u reasni-daemon -n 100 --no-pager
 
 只有「探测不到公网出口 IP（离线 / 全部探测源超时）」时仍需 `-f` 强制拉起：
 ```bash
-DAEMON_OPTS="-f --host 127.0.0.1 --port 8881 --token <YOUR_API_TOKEN> -t 150 --interval 10"
+DAEMON_OPTS="-f -t 150 --interval 10"
 ```

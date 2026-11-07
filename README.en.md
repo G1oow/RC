@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="./assets/icon.png" width="200" alt="RealityChecker logo">
+  <img src="./assets/icon.png" width="200" alt="RC logo">
 </p>
 
-<h1 align="center">RealityChecker</h1>
+<h1 align="center">RC</h1>
 
-<p align="center">A Go toolchain that discovers, probes and ranks REALITY SNI camouflage targets, shipped with one-command VPS deployment.</p>
+<p align="center">A VPS operations panel that aggregates SSH hardening, connectivity checks and tuning, and REALITY camouflage target selection behind a single <code>rc</code>.</p>
 
 <p align="center">
   <a href="./README.en.md">English</a> | <a href="./README.md">简体中文</a>
@@ -17,102 +17,67 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" alt="MIT License"></a>
 </p>
 
-RealityChecker answers one narrow question: which public websites on a given network range still pass a real REALITY handshake test? It expands a VPS IP into its announced ASN prefixes, scans those ranges, keeps only hosts that negotiate TLS 1.3 with X25519 and HTTP/2, and stores every verdict in a local asset database. Results are ranked 1-5 by protocol support, certificate and CDN signals, so you pick a camouflage domain from evidence instead of guessing one.
+RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc`, get a menu: lock SSH down first (key, port, password login off, with rollback), then check and tune TCP (TcpQuality / NodeQuality / tcpfit), then pick REALITY camouflage domains from the same box. Every stage lives in one menu, so you stop collecting one-off script URLs.
 
-## Highlights
+The panel holds no scanning logic itself: picking targets is delegated to the bundled scanning engine. The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
 
-| Highlight | Why it matters |
+## What the panel does
+
+| Section | Entry | Behaviour |
+|---|---|---|
+| SSH | `1` write key + change port | Appends the public key, changes the SSH port, opens the firewall; backs up to `/root/vps-init-backup`, validates with `sshd -t`, rolls back automatically on failure |
+| SSH | `2` port only / `3` disable password login / `4` rollback | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup |
+| Checks & tuning | `5` TCP quality / `6` NQ test / `7` TCP tuning | Runs TcpQuality, NodeQuality and tcpfit in turn, then applies the suggested kernel tuning |
+| Target selection | `8` REALITY target scan | Probes the local egress IP, drives the engine across the ASN's prefixes, prints ranked candidates |
+| Target selection | `9` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
+| Maintenance | `10` defaults / `11` update rc / `12` view log | Edit SSH port, key, scan directory and scan limit; self-update the panel; read `/var/log/rc-manager.log` |
+| Danger | `13` uninstall rc | Removes the panel only, leaving hardened SSH config and the engine untouched |
+
+The panel changes system state: with `DRY_RUN=1` every action is printed instead of executed, which is the recommended way to try it first.
+
+## Install
+
+Debian / Ubuntu, as root, one command and you land in the menu:
+
+```bash
+curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
+  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+```
+
+After that, type `rc` (or `RC`) to open the menu. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
+
+## Subcommands
+
+Every menu action has a non-interactive subcommand for scripting:
+
+| Command | Effect |
 |---|---|
-| Linux one-command deploy | `install.sh` pulls the release binary, `config.yaml` and the `data/` files, probes the machine's egress IPv4/IPv6 address, and prints the exact `auto` command to run next |
-| Windows one-command deploy | `install.ps1` creates the same layout under `%USERPROFILE%\reality-checker` |
-| Runs as a service | `src/deploy/systemd/reasni-daemon.service` with `reasni.env` starts the 24h daemon under systemd |
-| VPS bootstrap panel | `rc.sh` installs as `rc` and walks a fresh Debian/Ubuntu host through SSH hardening (backed up, checked with `sshd -t`, auto-rolled back on failure), TCP quality checks, NQ scoring, TCP tuning, then REALITY target selection |
-| Protocol-level filtering | A candidate must support TLS 1.3, X25519 and HTTP/2, and is dropped when it is a CDN edge, a hot website list entry, a default nginx page, a redirect, a blocked domain or a CN site |
-| Ranked, cache-first results | `get` serves targets scored 1-5 from the local SQLite database without rescanning (`--fresh` forces a rescan); `serve` exposes the same data over REST and SSE |
+| `rc` | Open the interactive menu (default) |
+| `rc ssh` | Write public key, change SSH port, open firewall |
+| `rc ssh-close` | Disable password login after confirming the new port |
+| `rc tcpq` | TCP quality check (TcpQuality) |
+| `rc score` | NQ test (NodeQuality) |
+| `rc tune` | TCP tuning (tcpfit) |
+| `rc reality` | REALITY camouflage target selection |
+| `rc status` | Show OS, SSH, ufw, engine and tcpfit status |
+| `rc rollback` | Roll back the SSH configuration |
+| `rc install-self` | Install or repair the panel at `/usr/local/bin/rc` |
+| `rc update` | Update the panel itself |
+| `rc uninstall` | Uninstall the panel |
+| `rc help` | Show help |
 
-## Architecture
+Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above.
 
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│ cmd (src/main.go)                                                  │
-│ get  auto  serve  daemon  patrol  asn  pipe  check  batch          │
-└────────────────────────────────────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────┐
-│ core.Engine  -  internal/core                                      │
-│ auto_scanner  pipeline  filter  patrol  daemon                     │
-└──────────┬───────────────────────┬───────────────────────┬─────────┘
-           │                       │                       │
-┌──────────▼─────────┐  ┌──────────▼─────────┐  ┌──────────▼─────────┐
-│ internal/asn       │  │ internal/detectors │  │ internal/storage   │
-│ RIPEstat prefixes  │  │ TLS1.3, X25519, h2 │  │ SQLite/PostgreSQL  │
-│ country lookup     │  │ CDN/302/hot site   │  │ ASN + target store │
-└────────────────────┘  └──────────┬─────────┘  └────────────────────┘
-                                   │
-                        ┌──────────▼─────────┐
-                        │ target websites    │
-                        └────────────────────┘
+## Panel and engine
 
-HTTP surface
-┌──────────────────┐     ┌──────────────────────────────┐     ┌──────────────────┐
-│ serve / daemon   │ ──▶ │ internal/server: REST + SSE  │ ──▶ │ embedded web UI  │
-└──────────────────┘     └──────────────────────────────┘     └──────────────────┘
-```
+`rc reality` makes sure the engine is present, probes the machine's egress IP (`icanhazip.com`), then drives a scan and prints the result. Domain selection criteria belong to the engine: same ASN or same facility, no public CDN, not a top-traffic site, a real TLS 1.3 + X25519 + HTTP/2 handshake, enough remaining certificate lifetime, low handshake latency.
 
-The Go binary embeds the built frontend (`src/web`), so `serve` and `daemon` serve the console and the `/api/*` endpoints from the same process.
+Run on its own, the engine keeps its full CLI surface; the panel is just one caller:
 
-## Usage Example
-
-`get` returns targets for one IP from the asset database first; `auto` scans the surrounding range into it; `serve` publishes the result set.
-
-```bash
-./reality-checker-main get 203.0.113.10 -n 5 -s 4
-./reality-checker-main get 203.0.113.10 --json
-./reality-checker-main auto 203.0.113.10 --limit 5
-./reality-checker-main serve --port 8881
-```
-
-`get` prints a ranked table (JSON with `--json`) and only rescans with `--fresh`. `auto` scans concurrently and keeps at most `--limit` suitable targets. `serve` listens on `:8881`, serves the embedded console at `/`, and requires a token only when one is configured.
-
-## Quick Install
-
-Linux: bash, curl, and a published release (the script defaults to `REF_TAG=latest`).
-
-```bash
-curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/install.sh -o install.sh
-bash install.sh            # optional first argument: install directory (default /root/rc-new)
-```
-
-Windows PowerShell:
-
-```powershell
-.\install.ps1              # optional first argument: install directory (default %USERPROFILE%\reality-checker)
-```
-
-From source. Go 1.26, Node 22 and pnpm 9 are required because the web assets must be built and embedded before `go build`:
-
-```bash
-cd src && ./build.sh
-```
-
-On Windows, use `.\src\build.ps1` instead. Either script writes `dist/reality-checker-linux-amd64`, `dist/reality-checker-linux-arm64` and `dist/reality-checker-windows-amd64.exe`.
-
-## Quick Start
-
-```bash
-cd /root/rc-new
-./reality-checker-main auto 203.0.113.10 --limit 5
-```
-
-A bare IPv4 is expanded to its `/24` and a bare IPv6 to its `/64`; a CIDR is scanned as given. Startup probes the public egress IP first, and needs `-f` when that probe fails (offline hosts, blocked probe endpoints). Verdicts land in `data/reality_targets.db`.
-
-## Commands
-
-| Command | What it does |
+| Engine command | Effect |
 |---|---|
-| `get <ip> [-n 5] [-s 3] [--fresh] [--json]` | Return scored targets for an IP, cache first |
-| `auto <ip/cidr> [--limit 5] [-v]` | Resolve ASN prefixes for the input and scan them concurrently into the database |
-| `serve [--port 8881] [--host 0.0.0.0] [--token TOKEN]` | Start the REST/SSE service and embedded console |
+| `get <ip> [-n 5] [-s 3] [--fresh] [--json]` | Return ranked targets for an IP, cache first |
+| `auto <ip/cidr> [--limit 5] [-v]` | Resolve the input's ASN prefixes and scan them into the database |
 | `daemon [-t 500] [--interval 10] [--country US]` | Run the 24h multi-ASN scanning daemon |
 | `patrol [--daemon]` | Re-test stored assets and apply lifecycle maintenance |
 | `asn <ASN> <country> [--stats] [--seed]` | List an ASN's announced prefixes filtered by country |
@@ -122,31 +87,64 @@ A bare IPv4 is expanded to its `/24` and a bare IPv6 to its `/64`; a CIDR is sca
 | `migrate [--from ...] [--to ...]` | Move the asset database between SQLite and PostgreSQL |
 | `version` | Print version, commit and build time |
 
-Global options: `-c, --config FILE` and `-f, --force`.
+The engine's `install.sh` lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
 
-## HTTP API
+## Architecture
 
-`serve` and `daemon` expose `/api/health`, `/api/stats`, `/api/filter/default`, `/api/targets/smart`, `/api/targets/stream` (SSE), `/api/targets/check`, `/api/targets`, `/api/targets/{domain}` and `/api/asns`. Authentication is off by default; enable it with `--token`, `RC_API_TOKEN`, or `server.api_token` in the config.
+```text
+          ┌─────────────────────────────────────────────────────┐
+   you ─▶ │ rc panel (rc.sh → /usr/local/bin/rc)                 │
+          │ ① SSH  ② checks & tuning  ③ targets  ④ maintenance  │
+          └───────────────┬─────────────────────────────────────┘
+                          │ rc reality: probe egress IP + call engine
+          ┌───────────────▼─────────────────────────────────────┐
+          │ scanning engine (/root/rc-new)                      │
+          │ ASN prefixes → concurrent TLS handshakes → filters  │
+          │ → asset database                                    │
+          └───────────────┬─────────────────────────────────────┘
+                          │
+          ┌───────────────▼─────────────────────────────────────┐
+          │ reasni-daemon.service: 24h ASN rotation + patrol     │
+          └─────────────────────────────────────────────────────┘
+```
+
+Panel and engine are plain Bash and Go artifacts: no Node runtime and no frontend build step. The engine binary is cross-compiled and published by CI.
 
 ## Configuration
 
-`config.yaml` is picked up from `-c/--config`, then the environment, the working directory, and the binary's directory.
+Panel settings persist in `/etc/rc-manager/rc.conf` (0600); environment variables of the same name take precedence:
+
+| Key | Default | Effect |
+|---|---|---|
+| `SSH_PORT` | `30000` | Target SSH port |
+| `SSH_PUBKEY` / `SSH_PUBKEY_FILE` | empty | Public key content or path to a public key file |
+| `RC_DIR` | `/root/rc-new` | Engine install directory |
+| `SCAN_LIMIT` | `5` | Maximum targets kept by `rc reality` |
+| `DRY_RUN` | `0` | `1` prints every action instead of executing it |
+| `BACKUP_ROOT` | `/root/vps-init-backup` | SSH configuration backup directory |
+
+The engine's `config.yaml` is independent of the panel; the keys that matter most:
 
 | Key | Effect |
 |---|---|
-| `database.driver` | `sqlite` (built-in default) or `postgres`; the shipped file selects `postgres` with `host: 127.0.0.1` |
+| `database.driver` | `sqlite` (built-in default) or `postgres` |
 | `database.sqlite.path` | Asset database path, default `data/reality_targets.db` |
 | `reality_filter.scan_threads` | Scan concurrency, default `200` |
 | `reality_filter.scan_timeout` | Per-IP handshake timeout in seconds, default `3` |
 | `reality_filter.require_no_cdn` / `require_no_cn` | Reject CDN edges and CN sites |
-| `reality_filter.check_gfw` | Toggle the static GFW list check (off in the shipped file) |
-| `reality_filter.use_cache` / `cache_max_days` | Serve from the asset DB and set cache age, default 7 days |
+| `reality_filter.check_gfw` | Toggle the static GFW list check |
+| `reality_filter.use_cache` / `cache_max_days` | Cache-first lookups and cache age, default 7 days |
+| `proxy.url` / `proxy.scanner` | Outbound proxy for engine downloads and scanning |
+
+## Upgrade note
+
+Earlier versions shipped an embedded HTTP API and web console. Both are gone: the panel, the CLI and the systemd daemon no longer listen on any port. If `DAEMON_OPTS` in `/etc/default/reasni` still carries `--port` / `--host` / `--token` / `--no-http`, the engine prints a notice and ignores them, but you should drop them and keep only `-t` and `--interval`.
 
 ## Documentation
 
 | Topic | What it covers | Link |
 |---|---|---|
-| Run as a service | systemd unit and environment template | [src/deploy/systemd/README.md](./src/deploy/systemd/README.md) |
+| Run as a service | systemd unit, `/etc/default/reasni` and maintenance commands | [src/deploy/systemd/README.md](./src/deploy/systemd/README.md) |
 | Build and release | Cross-compilation, embedded assets, CI entry point | [src/build.sh](./src/build.sh) |
 | Development docs | Architecture, database lifecycle, scanner design | [src/doc/dev](./src/doc/dev) |
 | Docs site source | VitePress home page and navigation | [src/doc/index.md](./src/doc/index.md) |
@@ -155,3 +153,5 @@ Global options: `-c, --config FILE` and `-f, --force`.
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
+
+For network research and learning only. Follow local law and use network resources responsibly.

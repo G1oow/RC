@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: RealityChecker
-  text: 自动化 REALITY 目标检测与扫描引擎
-  tagline: 高性能、低开销、全天候 24 小时全网 ASN 资产探测与保鲜系统
+  name: RC
+  text: VPS 聚合运维面板
+  tagline: SSH 加固、连通体检与调优、REALITY 目标筛选，集中在一个 rc 面板里
   actions:
     - theme: brand
       text: 24h 扫描开发计划
@@ -14,7 +14,7 @@ hero:
       link: /dev/database-and-lifecycle
     - theme: alt
       text: GitHub 源码
-      link: https://github.com/V2RaySSR/RealityChecker
+      link: https://github.com/G1oow/RC
 
 features:
   - title: 全天候 24h 扫描
