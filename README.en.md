@@ -21,6 +21,46 @@ RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc
 
 The panel holds no scanning logic itself: picking targets is delegated to the bundled scanning engine. The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
 
+## What the menu looks like
+
+Running `rc` drops you on this screen: a banner, one status line (OS, SSH port, password login, key count, ufw, engine and tcpfit state), then the 13 entries grouped into four sections. The menu itself is Chinese-only; every entry also has a non-interactive subcommand.
+
+```text
+  ____   ____
+ |  _ \ / ___|
+ | |_) | |
+ |  _ <| |___
+ |_| \_\____|  VPS 聚合面板
+  rc v1.0.0   (实机执行)
+
+  系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: 否
+  公钥: 1 条  |  ufw: 已启用
+  引擎: 已安装  |  tcpfit: 已安装
+
+【SSH 加固】
+    1) 写入公钥+改端口      2) 只改端口
+    3) 关闭密码登录         4) 回滚 SSH 配置
+
+【体检与调优】
+    5) TCP 质量检测         6) NQ 测试
+    7) TCP 调优(tcpfit)
+
+【目标筛选】
+    8) Reality 目标扫描     9) 重装扫描引擎
+
+【维护】
+   10) 默认设置            11) 更新 rc
+   12) 查看执行日志
+
+【危险】
+   13) 卸载 rc
+
+  ─────────────────────────────────────────
+    0) 退出
+
+  请选择 [0-13]:
+```
+
 ## What the panel does
 
 | Section | Entry | Behaviour |
@@ -37,14 +77,13 @@ The panel changes system state: with `DRY_RUN=1` every action is printed instead
 
 ## Install
 
-Debian / Ubuntu, as root, one command and you land in the menu:
+Debian / Ubuntu as root, one line and you land in the menu:
 
 ```bash
-curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-The script installs the panel at `/usr/local/bin/rc` and creates the `/usr/local/bin/RC` symlink, so both `rc` and `RC` open the menu. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
+The script installs itself at `/usr/local/bin/rc`, creates the `/usr/local/bin/RC` symlink and opens the menu; use `| sudo bash` when you are not root, or `| bash -s -- install-self` to install without starting. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
 
 ## Subcommands
 

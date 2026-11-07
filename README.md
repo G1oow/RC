@@ -21,6 +21,46 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
 面板本身不含扫描逻辑：选目标这一步交给随附的扫描引擎。引擎由面板自动安装并调用，也可以独立以 CLI 或 systemd 守护进程运行。
 
+## 面板长这样
+
+装好后输入 `rc`，看到的就是这一屏：横幅下面一行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、引擎与 tcpfit 状态），再按四个分区列出 13 个入口。
+
+```text
+  ____   ____
+ |  _ \ / ___|
+ | |_) | |
+ |  _ <| |___
+ |_| \_\____|  VPS 聚合面板
+  rc v1.0.0   (实机执行)
+
+  系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: 否
+  公钥: 1 条  |  ufw: 已启用
+  引擎: 已安装  |  tcpfit: 已安装
+
+【SSH 加固】
+    1) 写入公钥+改端口      2) 只改端口
+    3) 关闭密码登录         4) 回滚 SSH 配置
+
+【体检与调优】
+    5) TCP 质量检测         6) NQ 测试
+    7) TCP 调优(tcpfit)
+
+【目标筛选】
+    8) Reality 目标扫描     9) 重装扫描引擎
+
+【维护】
+   10) 默认设置            11) 更新 rc
+   12) 查看执行日志
+
+【危险】
+   13) 卸载 rc
+
+  ─────────────────────────────────────────
+    0) 退出
+
+  请选择 [0-13]:
+```
+
 ## 面板能力
 
 | 分区 | 入口 | 做什么 |
@@ -37,14 +77,13 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
 ## 安装
 
-Debian / Ubuntu，root 权限，一条命令装完直接进面板：
+Debian / Ubuntu，root 权限，一行装完直接进面板：
 
 ```bash
-curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-脚本会把面板装到 `/usr/local/bin/rc`，同时创建 `/usr/local/bin/RC` 软链接，之后输入 `rc` 或 `RC` 都能进菜单。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
+脚本会把自己装到 `/usr/local/bin/rc`，创建 `/usr/local/bin/RC` 软链接，然后直接打开菜单；非 root 用 `| sudo bash`，只想安装不启动用 `| bash -s -- install-self`。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
 
 ## 子命令
 

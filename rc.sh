@@ -2,10 +2,9 @@
 # rc.sh —— RC：VPS 聚合运维面板（SSH 加固 / 体检调优 / 目标筛选）
 #
 # 一键安装（Debian / Ubuntu，root；装完直接进面板）：
-#   curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-#     -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+#   curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 #
-# 之后只需输入 rc（或 RC）进入面板。
+# 脚本会把自己装到 /usr/local/bin/rc 并创建 RC 别名，之后输入 rc 或 RC 进面板。
 #
 # 非交互子命令：
 #   rc ssh          阶段 0：写入公钥 + 改 SSH 端口 + 放行防火墙
@@ -237,7 +236,7 @@ tool_state() { # $1 = 可执行路径
 status_brief() {
   printf '  系统: %s  |  SSH 端口: %s  |  密码登录: %s\n' "$(os_name)" "$(effective_ssh_port)" "$(ssh_password_auth)"
   printf '  公钥: %s 条  |  ufw: %s\n' "$(auth_key_count)" "$(ufw_state)"
-  printf '  reality-checker: %s  |  tcpfit: %s' \
+  printf '  引擎: %s  |  tcpfit: %s' \
     "$(tool_state "${RC_DIR}/reality-checker-main")" \
     "$(command -v tcpfit >/dev/null 2>&1 && printf '已安装' || printf '未安装')"
 }
@@ -254,7 +253,7 @@ status_full() {
   printf '  公钥条数        : %s\n' "$(auth_key_count)"
   printf '  ufw             : %s\n' "$(ufw_state)"
   printf '  出口 IP         : %s\n' "${ip:-探测失败}"
-  printf '  reality-checker : %s (%s)\n' "$(tool_state "${RC_DIR}/reality-checker-main")" "$RC_DIR"
+  printf '  引擎            : %s (%s)\n' "$(tool_state "${RC_DIR}/reality-checker-main")" "$RC_DIR"
   printf '  tcpfit          : %s\n' "$(tool_state "$(command -v tcpfit 2>/dev/null || printf /usr/local/bin/tcpfit)")"
   printf '  配置文件        : %s\n' "$( [[ -f $CONF_FILE ]] && printf '已存在' || printf '未创建')"
   printf '  备份目录        : %s\n' "$BACKUP_ROOT"
@@ -295,6 +294,8 @@ self_install() {
   need_root
   local target
   target="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+  # 管道执行（curl ... | bash）时 $0 是解释器名，不能当成源文件
+  case ${0##*/} in bash | sh | dash | zsh | ksh) target='' ;; esac
   if [[ $target == "$SELF" ]]; then
     ensure_alias
     return 0
@@ -892,7 +893,7 @@ menu_header() {
  |  _ \ / ___|
  | |_) | |
  |  _ <| |___
- |_| \_\\____|  VPS 聚合面板
+ |_| \_\____|  VPS 聚合面板
 BANNER
   printf '%b\n' "$NC"
   if [[ $DRY_RUN == 1 ]]; then
@@ -992,8 +993,7 @@ rc —— RC：VPS 聚合运维面板
   RC_DIR=/root/rc-new  SCAN_LIMIT=5  DRY_RUN=1
 
 一键安装:
-  curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-    -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+  curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 EOF
 }
 
