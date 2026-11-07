@@ -26,7 +26,7 @@ RealityChecker answers one narrow question: which public websites on a given net
 | Linux one-command deploy | `install.sh` pulls the release binary, `config.yaml` and the `data/` files, probes the machine's egress IPv4/IPv6 address, and prints the exact `auto` command to run next |
 | Windows one-command deploy | `install.ps1` creates the same layout under `%USERPROFILE%\reality-checker` |
 | Runs as a service | `src/deploy/systemd/reasni-daemon.service` with `reasni.env` starts the 24h daemon under systemd |
-| VPS bootstrap panel | `rc.sh` installs as `rc` and walks a fresh Debian/Ubuntu host through SSH hardening (backed up, checked with `sshd -t`, auto-rolled back on failure), TCP quality checks, NQ scoring, TCP tuning, then REALITY target selection |
+| VPS bootstrap panel (`rc` / `RC`) | `rc.sh` installs as `rc` and creates the `RC` alias, then walks a fresh Debian/Ubuntu host through SSH hardening (backed up, checked with `sshd -t`, auto-rolled back on failure), TCP quality checks, NQ scoring, TCP tuning, and finally REALITY target selection |
 | Protocol-level filtering | A candidate must support TLS 1.3, X25519 and HTTP/2, and is dropped when it is a CDN edge, a hot website list entry, a default nginx page, a redirect, a blocked domain or a CN site |
 | Ranked, cache-first results | `get` serves targets scored 1-5 from the local SQLite database without rescanning (`--fresh` forces a rescan); `serve` exposes the same data over REST and SSE |
 
@@ -123,6 +123,56 @@ A bare IPv4 is expanded to its `/24` and a bare IPv6 to its `/64`; a CIDR is sca
 | `version` | Print version, commit and build time |
 
 Global options: `-c, --config FILE` and `-f, --force`.
+
+## VPS Panel (rc / RC)
+
+`rc.sh` is the bundled single-file operations panel. It installs to `/usr/local/bin/rc` and creates the `/usr/local/bin/RC` symlink, so both `rc` and `RC` open it. Debian / Ubuntu, root required.
+
+```bash
+curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
+  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+```
+
+Panel menu:
+
+| Item | Action |
+|---|---|
+| 1 | SSH hardening: write the public key, change the port, open the firewall (stage 0) |
+| 2 | Change the SSH port only |
+| 3 | Disable password login (stage 0b) |
+| 4 | Roll back the SSH configuration |
+| 5 | TCP quality check (TcpQuality) |
+| 6 | NQ test (NodeQuality) |
+| 7 | TCP tuning (tcpfit) |
+| 8 | REALITY target selection (reality-checker) |
+| 9 | Reinstall reality-checker |
+| 10 | Defaults: SSH port, public key, scan directory, scan limit, DRY_RUN |
+| 11 | Update rc itself |
+| 12 | View the execution log |
+| 13 | Uninstall rc |
+| 0 | Exit |
+
+Every item also runs non-interactively:
+
+```bash
+rc                 # open the panel (default)
+rc ssh             # stage 0: public key, SSH port, firewall
+rc ssh-close       # stage 0b: disable password login after the new port works
+rc tcpq            # stage 1: TCP quality check
+rc score           # stage 2: NQ test
+rc tune            # stage 3: TCP tuning
+rc reality         # stage 4: REALITY target selection
+rc status          # component status
+rc rollback        # roll back the SSH configuration
+rc install-self    # install or repair /usr/local/bin/rc
+rc update          # update rc itself
+rc uninstall       # uninstall rc
+rc help            # help
+```
+
+Legacy numeric arguments `0 / 0b / 1 / 2 / 3 / 4` still work (`5`, once the sb panel hook, is no longer wired up); `vps-init.sh` is a compatibility shell that forwards to `rc.sh`.
+
+Defaults persist in `/etc/rc-manager/rc.conf` (mode `0600`) and same-named environment variables win, for example `SSH_PORT`, `RC_DIR`, `SCAN_LIMIT`, `DRY_RUN` and `BACKUP_ROOT`. SSH changes are backed up to `/root/vps-init-backup`, validated with `sshd -t`, and rolled back automatically on failure; the log lives at `/var/log/rc-manager.log`. Uninstalling removes only `rc`, `RC`, `/etc/rc-manager` and the log, while an installed reality-checker, tcpfit, the SSH changes and the backup directory stay.
 
 ## HTTP API
 

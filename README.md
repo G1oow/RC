@@ -26,7 +26,7 @@ RealityChecker 只回答一个问题：某段网络里，哪些公开站点还�
 | Linux 一键部署 | `install.sh` 下载发布产物、`config.yaml` 与 `data/` 数据文件，探测本机出口 IPv4/IPv6，并直接打印该跑的 `auto` 命令 |
 | Windows 一键部署 | `install.ps1` 在 `%USERPROFILE%\reality-checker` 建立同样的目录结构 |
 | 以服务方式常驻 | `src/deploy/systemd/reasni-daemon.service` 配合 `reasni.env`，用 systemd 托管 24h 扫描守护进程 |
-| VPS 开荒面板 | `rc.sh` 安装为 `rc`，带新机器依次走 SSH 加固（备份 + `sshd -t` 校验 + 失败自动回滚）、TCP 质量检测、NQ 评分、TCP 调优，最后做 REALITY 目标筛选 |
+| VPS 开荒面板（`rc` / `RC`） | `rc.sh` 安装为 `rc` 并创建 `RC` 别名，带新机器依次走 SSH 加固（备份 + `sshd -t` 校验 + 失败自动回滚）、TCP 质量检测、NQ 评分、TCP 调优，最后做 REALITY 目标筛选 |
 | 协议层过滤 | 候选站点必须支持 TLS 1.3、X25519、HTTP/2；命中 CDN 节点、热门站点名单、nginx 默认页、跳转、被封域名或国内站点即淘汰 |
 | 缓存优先 + 星级排序 | `get` 直接从本地 SQLite 资产库返回 1-5 星目标，不重复扫描（`--fresh` 强制重扫）；`serve` 用 REST 与 SSE 暴露同一份数据 |
 
@@ -123,6 +123,56 @@ cd /root/rc-new
 | `version` | 输出版本、提交与构建时间 |
 
 全局选项：`-c, --config FILE`、`-f, --force`。
+
+## VPS 面板（rc / RC）
+
+`rc.sh` 是配套的单文件运维面板：安装到 `/usr/local/bin/rc`，同时创建 `/usr/local/bin/RC` 软链接，因此输入 `rc` 或 `RC` 都能进面板。适用于 Debian / Ubuntu，需要 root。
+
+```bash
+curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
+  -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+```
+
+面板菜单：
+
+| 编号 | 功能 |
+|---|---|
+| 1 | SSH 加固：写入公钥、改端口、放行防火墙（阶段 0） |
+| 2 | 只改 SSH 端口 |
+| 3 | 关闭密码登录（阶段 0b） |
+| 4 | 回滚 SSH 配置 |
+| 5 | TCP 质量检测（TcpQuality） |
+| 6 | NQ 测试（NodeQuality） |
+| 7 | TCP 调优（tcpfit） |
+| 8 | Reality 伪装目标筛选（reality-checker） |
+| 9 | 重装 reality-checker |
+| 10 | 默认设置：SSH 端口、公钥、扫描目录、扫描条数上限、DRY_RUN |
+| 11 | 更新 rc 自身 |
+| 12 | 查看执行日志 |
+| 13 | 卸载 rc |
+| 0 | 退出 |
+
+同一批动作也能非交互执行：
+
+```bash
+rc                 # 打开面板（默认）
+rc ssh             # 阶段 0：公钥、SSH 端口、防火墙
+rc ssh-close       # 阶段 0b：确认新端口可登录后关闭密码登录
+rc tcpq            # 阶段 1：TCP 质量检测
+rc score           # 阶段 2：NQ 测试
+rc tune            # 阶段 3：TCP 调优
+rc reality         # 阶段 4：Reality 伪装目标筛选
+rc status          # 各组件状态
+rc rollback        # 回滚 SSH 配置
+rc install-self    # 安装/修复到 /usr/local/bin/rc
+rc update          # 更新 rc 自身
+rc uninstall       # 卸载 rc
+rc help            # 帮助
+```
+
+旧数字参数 `0 / 0b / 1 / 2 / 3 / 4` 仍可用（`5` 原为 sb 面板，现已不再联动）；`vps-init.sh` 是转发到 `rc.sh` 的兼容壳。
+
+默认值持久化在 `/etc/rc-manager/rc.conf`（权限 `0600`），同名环境变量优先，如 `SSH_PORT`、`RC_DIR`、`SCAN_LIMIT`、`DRY_RUN`、`BACKUP_ROOT`。改 SSH 前会备份到 `/root/vps-init-backup`，改完用 `sshd -t` 校验，失败自动回滚；日志在 `/var/log/rc-manager.log`。卸载只删除 `rc`、`RC`、`/etc/rc-manager` 与日志，已装的 reality-checker、tcpfit、SSH 改动与备份目录都保留。
 
 ## HTTP 接口
 
