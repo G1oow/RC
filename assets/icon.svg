@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- 纯黑背景 -->
+  <rect width="512" height="512" fill="#000000" rx="100" />
+  
+  <!-- 加粗 RC 字体 -->
+  <text x="50%" y="54%" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, Helvetica, Arial, sans-serif" font-size="240" font-weight="900" fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle" letter-spacing="-5">RC</text>
+</svg>
