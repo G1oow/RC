@@ -2,10 +2,9 @@
 # rc.sh —— RC：VPS 聚合运维面板（SSH 加固 / 体检调优 / 目标筛选）
 #
 # 一键安装（Debian / Ubuntu，root；装完直接进面板）：
-#   curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-#     -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+#   curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 #
-# 之后只需输入 rc（或 RC）进入面板。
+# 脚本会把自己装到 /usr/local/bin/rc 并创建 RC 别名，之后输入 rc 或 RC 进面板。
 #
 # 非交互子命令：
 #   rc ssh          阶段 0：写入公钥 + 改 SSH 端口 + 放行防火墙
@@ -295,6 +294,8 @@ self_install() {
   need_root
   local target
   target="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+  # 管道执行（curl ... | bash）时 $0 是解释器名，不能当成源文件
+  case ${0##*/} in bash | sh | dash | zsh | ksh) target='' ;; esac
   if [[ $target == "$SELF" ]]; then
     ensure_alias
     return 0
@@ -992,8 +993,7 @@ rc —— RC：VPS 聚合运维面板
   RC_DIR=/root/rc-new  SCAN_LIMIT=5  DRY_RUN=1
 
 一键安装:
-  curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
-    -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
+  curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 EOF
 }
 
