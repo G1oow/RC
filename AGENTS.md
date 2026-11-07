@@ -51,6 +51,22 @@ go test ./...
 - 不从本地直接推 `main`：走分支 + PR，合并信息用 merge commit。
 - 版本 tag 形如 `v1.2.3`，push tag 会触发 `.github/workflows/build.yml` 构建三平台产物并发布 Release。
 
+### 版本号必须与 tag 同步
+
+仓库里有**两套版本号**，发版时都要对上：
+
+| 版本 | 来源 | 谁负责 |
+|---|---|---|
+| 发布版本 | Git tag `v1.2.5` | 维护者打 tag |
+| 面板版本 | `rc.sh` 里的 `RC_VERSION='…'` | **必须手改**，脚本不会自动跟随 tag |
+| 引擎版本 | CI 从 tag 通过 `-ldflags` 注入 `internal/version.Version` | 自动，无需手改 |
+
+发版前必须把 `RC_VERSION` 提到本次 tag 的版本号，否则：
+
+- 面板横幅仍显示旧版本（`rc v1.0.0   (实机执行)`），用户看到的是过期信息；
+- `rc update` 拿远端脚本的 `RC_VERSION` 与本地比较，两者相同时直接判定「已是最新版本」并返回，**用户实际拿不到更新**；
+- `rc.sh` 不随 Release 资产分发（面板更新走 `main` 的 raw 文件），tag 与面板版本因此更容易脱钩，只能靠这条约定兜住。
+
 ## 自动化与发布边界
 
 协作代理默认只做到「提出变更」为止。下列动作必须由维护者明确指令，**不能**从「提 PR」「触发构建」「更新 tag」这类话里自行推断出前置步骤：
@@ -78,6 +94,7 @@ go test ./...
 3. 对外口径：`grep -n "RealityChecker\|reality-checker-main\|/api/" README.md README.en.md` 应为空。
 4. 文档内链指向真实存在的文件；`config.yaml` 里写的键名与代码一致。
 5. 不提交 `data/*.db`、`src/data/`、`.pi/` 等运行或工具产物。
+6. 发版前：`grep '^RC_VERSION=' rc.sh` 与即将打的 tag 版本号一致。
 
 ## 不要做
 
