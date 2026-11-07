@@ -1,6 +1,6 @@
 # Systemd 守护进程服务配置说明
 
-本目录包含 RealityChecker / Reasni 守护进程的 systemd 服务单元与运行环境配置。
+本目录包含 RC 扫描引擎守护进程（`daemon` 模式）的 systemd 服务单元与运行环境配置。
 
 ## 文件说明
 

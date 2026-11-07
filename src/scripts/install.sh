@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# RealityChecker / Reasni 守护进程一键安装与运维脚本
+# RC 引擎守护进程一键安装与运维脚本
 # 适用平台: Linux (amd64 / arm64), 支持 Armbian / NanoPi / 树莓派 / Ubuntu / Debian / CentOS 等
 #
 
@@ -94,16 +94,13 @@ detect_hardware() {
 
 usage() {
     cat <<EOF
-RealityChecker / Reasni 守护进程安装与管理工具
+RC 扫描引擎守护进程安装与管理工具
 
 用法:
   bash install.sh [选项]
 
 选项:
-  --token <str>        设置 Web/API 鉴权 Token (留空将自动生成随机安全 Token)
   -t, --threads <num>  设置 ASN 扫描并发协程数 (默认: 嵌入式设备 150, VPS/服务器 500)
-  --host <str>         设置内置 HTTP API 监听地址 (默认: 0.0.0.0)
-  --port <num>         设置内置 HTTP API 监听端口 (默认: 8881)
   --interval <sec>     设置每轮扫描等待间隔秒数 (默认: 10)
   -f, --force          强制运行，跳过非 CN (中国大陆) 公网出口 IP 校验
   --local-bin <path>   使用本地已有二进制安装，不进行网络下载
@@ -116,8 +113,8 @@ RealityChecker / Reasni 守护进程安装与管理工具
   # 快速在线安装 (自动识别 NanoPi/SBC 并优化参数):
   bash install.sh
 
-  # 自定义 Token 与并发参数:
-  bash install.sh --token my-secret-token -t 150
+  # 自定义并发参数:
+  bash install.sh -t 150
 
   # 在非中国大陆机器上强制启动:
   bash install.sh --force
@@ -127,10 +124,7 @@ RealityChecker / Reasni 守护进程安装与管理工具
 EOF
 }
 
-OPT_TOKEN=""
 OPT_THREADS=""
-OPT_HOST="0.0.0.0"
-OPT_PORT="8881"
 OPT_INTERVAL="10"
 OPT_FORCE=false
 OPT_LOCAL_BIN=""
@@ -139,36 +133,12 @@ DO_UNINSTALL=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --token)
-            OPT_TOKEN="$2"
-            shift 2
-            ;;
-        --token=*)
-            OPT_TOKEN="${1#*=}"
-            shift 1
-            ;;
         -t|--threads)
             OPT_THREADS="$2"
             shift 2
             ;;
         --threads=*)
             OPT_THREADS="${1#*=}"
-            shift 1
-            ;;
-        --host)
-            OPT_HOST="$2"
-            shift 2
-            ;;
-        --host=*)
-            OPT_HOST="${1#*=}"
-            shift 1
-            ;;
-        --port)
-            OPT_PORT="$2"
-            shift 2
-            ;;
-        --port=*)
-            OPT_PORT="${1#*=}"
             shift 1
             ;;
         --interval)
@@ -216,7 +186,7 @@ while [ $# -gt 0 ]; do
 done
 
 uninstall_reasni() {
-    log_title "正在卸载 RealityChecker / Reasni 守护进程服务"
+    log_title "正在卸载 RC 引擎守护进程服务"
     check_root
 
     if systemctl is-active --quiet reasni-daemon 2>/dev/null; then
@@ -249,7 +219,7 @@ install_reasni() {
     detect_arch
     detect_hardware
 
-    log_title "开始安装 RealityChecker / Reasni 守护进程服务"
+    log_title "开始安装 RC 引擎守护进程服务"
     log_info "系统架构: ${TARGET_ARCH}"
 
     # 1. 硬件自适应并发设置
@@ -263,21 +233,6 @@ install_reasni() {
         fi
     else
         log_info "使用自定义并发数: -t ${OPT_THREADS}"
-    fi
-
-    # 2. Token 生成与配置
-    if [ -z "${OPT_TOKEN}" ]; then
-        # 检查是否已有配置中的 token
-        if [ -f "${DEFAULT_ENV_FILE}" ] && grep -q 'token' "${DEFAULT_ENV_FILE}"; then
-            log_info "保留已有配置文件中的鉴权 Token"
-        else
-            if command -v openssl >/dev/null 2>&1; then
-                OPT_TOKEN="$(openssl rand -hex 12)"
-            else
-                OPT_TOKEN="$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | cut -c 1-24 || echo "reasni-$(date +%s)")"
-            fi
-            log_info "已自动生成安全 API Token: ${CYAN}${OPT_TOKEN}${NC}"
-        fi
     fi
 
     # 3. 安装或更新二进制文件
@@ -343,16 +298,13 @@ install_reasni() {
             log_info "已复制当前 config.yaml 至 ${CONFIG_DIR}/config.yaml"
         else
             cat <<'YAMLEOF' > "${CONFIG_DIR}/config.yaml"
-# RealityChecker 基础配置文件
+# RC 引擎基础配置文件
 log:
   level: "info"
-storage:
-  type: "sqlite"
+database:
+  driver: "sqlite"
   sqlite:
     path: "data/reality_targets.db"
-server:
-  host: "0.0.0.0"
-  port: 8881
 YAMLEOF
             log_info "已生成默认 ${CONFIG_DIR}/config.yaml"
         fi
@@ -360,10 +312,7 @@ YAMLEOF
 
     # 6. 配置环境参数文件 /etc/default/reasni
     log_info "配置运行参数环境文件 ${DEFAULT_ENV_FILE}..."
-    local daemon_opts="--host ${OPT_HOST} --port ${OPT_PORT} -t ${OPT_THREADS} --interval ${OPT_INTERVAL}"
-    if [ -n "${OPT_TOKEN}" ]; then
-        daemon_opts="${daemon_opts} --token ${OPT_TOKEN}"
-    fi
+    local daemon_opts="-t ${OPT_THREADS} --interval ${OPT_INTERVAL}"
     if [ "${OPT_FORCE}" = true ]; then
         daemon_opts="-f ${daemon_opts}"
     fi
@@ -371,7 +320,7 @@ YAMLEOF
     if [ ! -f "${DEFAULT_ENV_FILE}" ]; then
         cat <<ENVEOF > "${DEFAULT_ENV_FILE}"
 # /etc/default/reasni
-# RealityChecker / Reasni 守护进程参数配置
+# RC 引擎守护进程参数配置
 DAEMON_OPTS="${daemon_opts}"
 REALITY_CONFIG="${CONFIG_DIR}/config.yaml"
 ENVEOF
@@ -390,7 +339,7 @@ ENVEOF
     log_info "安装 systemd 服务文件至 ${SYSTEMD_SERVICE_FILE}..."
     cat <<SERVICEEOF > "${SYSTEMD_SERVICE_FILE}"
 [Unit]
-Description=RealityChecker ASN Scanner Daemon
+Description=RC ASN Scanner Daemon
 Documentation=https://github.com/${REPO}
 After=network-online.target
 Wants=network-online.target
@@ -416,7 +365,7 @@ SERVICEEOF
     log_info "安装服务运维快捷工具: ${SERVICE_HELPER_PATH}..."
     cat <<'HELPEREOF' > "${SERVICE_HELPER_PATH}"
 #!/usr/bin/env bash
-# reasni-service: RealityChecker 服务快捷管理工具
+# reasni-service: RC 引擎服务快捷管理工具
 set -e
 
 ACTION="${1:-status}"
@@ -449,7 +398,7 @@ case "$ACTION" in
         echo "修改后请执行: reasni-service restart 使配置生效。"
         ;;
     update)
-        echo "正在更新 RealityChecker 服务..."
+        echo "正在更新 RC 引擎服务..."
         curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash
         ;;
     uninstall)
@@ -471,10 +420,6 @@ HELPEREOF
 
     # 10. 输出就绪信息
     log_title "安装完成并已成功拉起服务！"
-    echo -e "Web 控制台与 API 地址: ${CYAN}http://${OPT_HOST}:${OPT_PORT}${NC}"
-    if [ -n "${OPT_TOKEN}" ]; then
-        echo -e "API 鉴权 Token:        ${YELLOW}${OPT_TOKEN}${NC}"
-    fi
     echo -e "扫描并发协程数 (-t):   ${GREEN}${OPT_THREADS}${NC}"
     echo -e "数据工作目录:          ${BLUE}${DATA_DIR}${NC}"
     echo -e "环境配置文件:          ${BLUE}${DEFAULT_ENV_FILE}${NC}"

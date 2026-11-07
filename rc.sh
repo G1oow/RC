@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rc.sh —— VPS 开荒管理面板（reality-checker 配套工具）
+# rc.sh —— RC：VPS 聚合运维面板（SSH 加固 / 体检调优 / 目标筛选）
 #
 # 一键安装（Debian / Ubuntu，root；装完直接进面板）：
 #   curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
@@ -715,11 +715,11 @@ ensure_reality_checker() {
   if [[ -x ${RC_DIR}/reality-checker-main ]]; then ok "已安装：${RC_DIR}/reality-checker-main"; return 0; fi
   warn "未安装，先执行 install.sh 到 ${RC_DIR}"
   run bash -c "curl -fsSL '${SRC_RC_INSTALL}' | bash -s -- '${RC_DIR}'"
-  [[ $DRY_RUN == 1 || -x ${RC_DIR}/reality-checker-main ]] || die 'reality-checker 安装失败'
+  [[ $DRY_RUN == 1 || -x ${RC_DIR}/reality-checker-main ]] || die '扫描引擎安装失败'
 }
 
 stage4() {
-  step '阶段 4 / Reality 伪装目标筛选（reality-checker）'
+  step '阶段 4 / Reality 伪装目标筛选（扫描引擎）'
   ensure_reality_checker
 
   local ip family=''
@@ -892,7 +892,7 @@ menu_header() {
  |  _ \ / ___|
  | |_) | |
  |  _ <| |___
- |_| \_\\____|  VPS 开荒面板
+ |_| \_\\____|  VPS 聚合面板
 BANNER
   printf '%b\n' "$NC"
   if [[ $DRY_RUN == 1 ]]; then
@@ -912,7 +912,7 @@ BANNER
   printf '    5) TCP 质量检测         6) NQ 测试\n'
   printf '    7) TCP 调优(tcpfit)\n\n'
   printf '\033[36m【目标筛选】\033[0m\n'
-  printf '    8) Reality 目标扫描     9) 重装 reality-checker\n\n'
+  printf '    8) Reality 目标扫描     9) 重装扫描引擎\n\n'
   printf '\033[36m【维护】\033[0m\n'
   printf '   10) 默认设置            11) 更新 rc\n'
   printf '   12) 查看执行日志\n\n'
@@ -949,7 +949,7 @@ menu_main() {
       6) stage2 || true ;;
       7) stage3 || true ;;
       8) stage4 || true ;;
-      9) step '重装 reality-checker'; ensure_reality_checker || true ;;
+      9) step '重装扫描引擎'; ensure_reality_checker || true ;;
       10) menu_settings ;;
       11) update_self || true ;;
       12) view_log ;;
@@ -965,7 +965,7 @@ menu_main() {
 
 usage() {
   cat <<'EOF'
-rc —— VPS 开荒管理面板（reality-checker 配套）
+rc —— RC：VPS 聚合运维面板
 
 用法:
   rc                    打开面板（默认）
