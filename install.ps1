@@ -2,7 +2,7 @@
 # 用法: .\install.ps1 [安装目录]      默认目录: $env:USERPROFILE\reality-checker
 $ErrorActionPreference = 'Stop'
 
-$Repo = 'G1oow/reality-checker-main'
+$Repo = 'G1oow/RC'
 $Ref = if ($env:REF) { $env:REF } else { 'main' }
 # 主程序走 GitHub Releases 发布产物；未指定 REF_TAG 时取 latest release
 $RefTag = if ($env:REF_TAG) { $env:REF_TAG } else { 'latest' }

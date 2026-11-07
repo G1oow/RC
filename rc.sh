@@ -2,7 +2,7 @@
 # rc.sh —— VPS 开荒管理面板（reality-checker 配套工具）
 #
 # 一键安装（Debian / Ubuntu，root；装完直接进面板）：
-#   curl -LfsS https://raw.githubusercontent.com/G1oow/reality-checker-main/main/rc.sh \
+#   curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
 #     -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
 #
 # 之后只需输入 rc（或 RC）进入面板。
@@ -48,8 +48,12 @@ SOCKET_DROPIN=/etc/systemd/system/ssh.socket.d/10-vps-init-port.conf
 SRC_TCPQUALITY='https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh'
 SRC_NQ='https://run.NodeQuality.com'
 SRC_TCPFIT='https://raw.githubusercontent.com/Kylin010/tcpfit/main/tcpfit.sh'
-SRC_RC_INSTALL='https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.sh'
-SELF_URL='https://raw.githubusercontent.com/G1oow/reality-checker-main/main/rc.sh'
+SRC_RC_INSTALL='https://raw.githubusercontent.com/G1oow/RC/main/install.sh'
+# 仓库文件地址给两种写法，兼容 RC.sh / rc.sh（raw 路径大小写敏感）
+SELF_URL_CANDIDATES=(
+  'https://raw.githubusercontent.com/G1oow/RC/main/rc.sh'
+  'https://raw.githubusercontent.com/G1oow/RC/main/RC.sh'
+)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -265,6 +269,15 @@ fetch_to() { # url dest
     { command -v wget >/dev/null 2>&1 && wget -q --timeout=15 --tries=3 -O "$2" "$1"; }
 }
 
+# 按候选地址依次尝试，全部失败才返回非零
+fetch_self() { # dest
+  local dest=$1 url
+  for url in "${SELF_URL_CANDIDATES[@]}"; do
+    fetch_to "$url" "$dest" 2>/dev/null && [[ -s $dest ]] && return 0
+  done
+  return 1
+}
+
 verify_script() { # path
   local f=$1
   [[ -s $f ]] || { warn "校验失败：$f 为空"; return 1; }
@@ -296,7 +309,7 @@ self_install() {
   if [[ -f $target && $target != /dev/fd/* && $target != /proc/* ]]; then
     cp -a "$target" "$tmp" 2>/dev/null || { rm -f "$tmp"; warn "复制失败：$target"; return 1; }
   else
-    fetch_to "$SELF_URL" "$tmp" || { rm -f "$tmp"; warn "下载失败：$SELF_URL"; return 1; }
+    fetch_self "$tmp" || { rm -f "$tmp"; warn "下载失败：${SELF_URL_CANDIDATES[0]}"; return 1; }
   fi
 
   if ! verify_script "$tmp"; then
@@ -326,7 +339,7 @@ update_self() {
   step '更新 rc'
   printf '    当前版本: %s\n' "$RC_VERSION"
 
-  fetch_to "$SELF_URL" "$tmp" || { rm -f "$tmp"; die "下载失败：$SELF_URL"; }
+  fetch_self "$tmp" || { rm -f "$tmp"; die "下载失败：${SELF_URL_CANDIDATES[0]}"; }
   if ! verify_script "$tmp"; then
     rm -f "$tmp"
     die '更新中止：新脚本未通过校验，本地版本保持不变'
@@ -959,7 +972,7 @@ rc —— VPS 开荒管理面板（reality-checker 配套）
   RC_DIR=/root/rc-new  SCAN_LIMIT=5  DRY_RUN=1
 
 一键安装:
-  curl -LfsS https://raw.githubusercontent.com/G1oow/reality-checker-main/main/rc.sh \
+  curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
     -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
 EOF
 }

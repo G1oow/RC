@@ -3,7 +3,7 @@
 # 用法: bash install.sh [安装目录]      默认目录: /root/rc-new
 set -euo pipefail
 
-REPO="G1oow/reality-checker-main"
+REPO="G1oow/RC"
 REF="${REF:-main}"
 # 主程序走 GitHub Releases 发布产物；未指定 REF_TAG 时取 latest release
 REF_TAG="${REF_TAG:-latest}"

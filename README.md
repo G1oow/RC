@@ -15,7 +15,7 @@
 ### Linux（VPS / Debian / Ubuntu）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/install.sh | bash
 ```
 
 默认安装到 `/root/rc-new`，完成后直接跑：
@@ -27,13 +27,13 @@ cd /root/rc-new && ./reality-checker-main auto <你的VPS_IP> --limit 5
 自定义目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.sh | bash -s -- /opt/rc
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/install.sh | bash -s -- /opt/rc
 ```
 
 ### Windows（PowerShell）
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/G1oow/RC/main/install.ps1 | iex"
 ```
 
 默认安装到 `%USERPROFILE%\reality-checker`，完成后直接跑：
@@ -45,7 +45,7 @@ cd "$env:USERPROFILE\reality-checker"; .\reality-checker-main.exe auto <你的VP
 自定义目录：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $env:REF='main'; irm https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.ps1 -OutFile $env:TEMP\rc-install.ps1; & $env:TEMP\rc-install.ps1 'D:\rc' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $env:REF='main'; irm https://raw.githubusercontent.com/G1oow/RC/main/install.ps1 -OutFile $env:TEMP\rc-install.ps1; & $env:TEMP\rc-install.ps1 'D:\rc' }"
 ```
 
 ### 一键指令做了什么
@@ -72,7 +72,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $env:REF='main'; irm
 
 ```bash
 # 安装到 /usr/local/bin/rc，装完直接进面板
-curl -LfsS https://raw.githubusercontent.com/G1oow/reality-checker-main/main/rc.sh \
+curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh \
   -o /usr/local/bin/rc && chmod +x /usr/local/bin/rc && rc
 ```
 
@@ -145,7 +145,7 @@ DRY_RUN=1 rc ssh                         # 只打印，不落盘
 ```bash
 mkdir -p /root/rc-new && cd /root/rc-new
 curl -fL -o reality-checker-main \
-  https://github.com/G1oow/reality-checker-main/releases/latest/download/reality-checker-main
+  https://github.com/G1oow/RC/releases/latest/download/reality-checker-main
 chmod +x reality-checker-main
 ./reality-checker-main auto <你的VPS_IP> --limit 5
 ```
