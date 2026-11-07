@@ -32,7 +32,7 @@ umask 077
 
 trap 'printf "\n\033[31mfail\033[0m 第 %s 行执行失败\n" "$LINENO" >&2' ERR
 
-RC_VERSION='1.0.0'
+RC_VERSION='1.2.5'
 
 CONF_DIR='/etc/rc-manager'
 CONF_FILE="${CONF_DIR}/rc.conf"
