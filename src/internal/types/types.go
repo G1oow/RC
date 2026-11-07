@@ -531,7 +531,6 @@ type Config struct {
 	Filter           FilterConfig        `yaml:"filter"`
 	RealityFilter    FilterConfig        `yaml:"reality_filter,omitempty"` // 向后兼容旧配置键名
 	Log              LogConfig           `yaml:"log"`
-	Server           ServerConfig        `yaml:"server"`
 	Database         DatabaseConfig      `yaml:"database"`
 }
 
@@ -614,11 +613,6 @@ type PostgresConfig struct {
 	MinConns        int           `yaml:"min_conns"`
 	MaxConnLifetime time.Duration `yaml:"max_conn_lifetime"`
 	MaxConnIdleTime time.Duration `yaml:"max_conn_idle_time"`
-}
-
-// ServerConfig HTTP 服务配置
-type ServerConfig struct {
-	APIToken string `yaml:"api_token"`
 }
 
 // NetworkConfig 网络配置

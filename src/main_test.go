@@ -36,10 +36,10 @@ func TestParseGlobalFlags(t *testing.T) {
 		},
 		{
 			name:       "config and force flags combined",
-			args:       []string{"-c", "my-conf.yaml", "--force", "serve", "--port", "8881"},
+			args:       []string{"-c", "my-conf.yaml", "--force", "daemon", "--interval", "10"},
 			wantConfig: "my-conf.yaml",
 			wantForce:  true,
-			wantRemain: []string{"serve", "--port", "8881"},
+			wantRemain: []string{"daemon", "--interval", "10"},
 		},
 		{
 			name:       "config with equal sign",
