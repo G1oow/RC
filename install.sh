@@ -104,7 +104,7 @@ fi
 
 echo
 if [ -n "${TARGET}" ]; then
-  RUN_ARGS=(auto "${TARGET}" --limit 5)
+  RUN_ARGS=(auto "${TARGET}" --limit 10)
   if [ -n "${FAMILY_FLAG}" ]; then
     RUN_ARGS+=("${FAMILY_FLAG}")
   fi
@@ -124,6 +124,6 @@ if [ -n "${TARGET}" ]; then
     y|Y|yes|YES) cd "${DIR}" && exec ./reality-checker-main "${RUN_ARGS[@]}" ;;
   esac
 else
-  echo "[*] 用法: cd ${DIR} && ./reality-checker-main auto <你的VPS_IP> --limit 5"
+  echo "[*] 用法: cd ${DIR} && ./reality-checker-main auto <你的VPS_IP> --limit 10"
 fi
 echo "[*] 完整说明见: ${BASE}/README.md"

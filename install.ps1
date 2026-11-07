@@ -131,5 +131,5 @@ if ($Target) {
     }
 }
 else {
-    Write-Host "[*] 用法: cd `"$Dir`"; .\reality-checker-main.exe auto <你的VPS_IP> --limit 5"
+    Write-Host "[*] 用法: cd `"$Dir`"; .\reality-checker-main.exe auto <你的VPS_IP> --limit 10"
 }
