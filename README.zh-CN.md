@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/icon.svg" width="200" alt="RealityChecker 标志">
+  <img src="./assets/icon.png" width="200" alt="RealityChecker 标志">
 </p>
 
 <h1 align="center">RealityChecker</h1>
