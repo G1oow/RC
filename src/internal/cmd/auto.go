@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,25 +40,28 @@ func CalculateTotalIPs(cidrs []string) int64 {
 func CalculateRemainingIPs(cidrs []string, checkpoints map[string]*storage.CheckpointRecord) int64 {
 	return core.CalculateRemainingIPs(cidrs, checkpoints)
 }
-
 // AutoScanCLIOptions 自动扫描命令行的参数配置
 type AutoScanCLIOptions struct {
-	CIDRs          []string
-	MaxTargets     int
-	CheckAll       bool
-	ExportFile     string
-	Filter         types.FilterConfig
-	ASN            string
-	Country        string
-	InitialResults []*types.DetectionResult
-	Verbose        bool
+	CIDRs            []string
+	MaxTargets       int
+	CheckAll         bool
+	ExportFile       string
+	Filter           types.FilterConfig
+	ASN              string
+	Country          string
+	Scope            string // 本次 pass 的来源标签（同 ASN / 同地区 xx），仅用于日志
+	NoRegionFallback bool   // 禁用「同 ASN 无结果 → 同地区」回退
+	RegionASNs       int    // 同地区回退最多尝试的 ASN 个数
+	InitialResults   []*types.DetectionResult
+	Verbose          bool
 }
-
-// executeAuto 组装 CLI 终端进度条与事件回调，调用 core.AutoScanner 执行扫描
-func (r *RootCmd) executeAuto(opts AutoScanCLIOptions) {
+// executeAutoPass 执行单次扫描 pass：网络扫描 + 检测 + 入库，不含最终表格渲染与导出
+func (r *RootCmd) executeAutoPass(opts AutoScanCLIOptions) (*core.AutoScanResult, error) {
 	if len(opts.CIDRs) == 0 {
-		logger.PrintError("错误：未提供有效的 CIDR 扫描网段")
-		return
+		return nil, core.ErrNoCIDRsProvided
+	}
+	if opts.Scope != "" {
+		logger.PrintTimestampedMessage("—— 本阶段扫描范围：%s ——", opts.Scope)
 	}
 
 	if r.config != nil && r.config.Proxy.Scanner && r.config.Proxy.URL != "" {
@@ -70,7 +74,7 @@ func (r *RootCmd) executeAuto(opts AutoScanCLIOptions) {
 	})
 	if err != nil {
 		logger.PrintError(fmt.Sprintf("初始化应用容器失败: %v", err))
-		return
+		return nil, fmt.Errorf("初始化应用容器失败: %w", err)
 	}
 	defer container.Close()
 
@@ -239,47 +243,300 @@ func (r *RootCmd) executeAuto(opts AutoScanCLIOptions) {
 	if err != nil {
 		if errors.Is(err, core.ErrAllCompleted) {
 			logger.PrintTimestampedMessage("✅ 全量摸排任务 (%s) 的所有网段此前已全部扫描完成！如需重新全量扫描请指定 --reset-scan", taskKey)
-			return
 		}
-		logger.PrintError(fmt.Sprintf("扫描失败: %v", err))
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// reportAutoResults 导出候选资产池并渲染最终结果表
+func (r *RootCmd) reportAutoResults(opts AutoScanCLIOptions, results []*types.DetectionResult, rawPool []*types.DetectionResult, interrupted bool) {
+	if opts.ExportFile != "" && len(rawPool) > 0 {
+		exportPool := &types.CandidatePool{
+			CreatedAt: time.Now(),
+			Source:    fmt.Sprintf("%s (%s)", opts.ASN, opts.Country),
+			Targets:   rawPool,
+		}
+		if payload, err := json.MarshalIndent(exportPool, "", "  "); err == nil {
+			_ = os.WriteFile(opts.ExportFile, payload, 0644)
+			logger.PrintTimestampedMessage("已将本次摸排发现的 %d 个候选资产导出至: %s", len(rawPool), opts.ExportFile)
+		}
+	}
+
+	if interrupted {
+		if len(results) > 0 {
+			r.batchManager.SortByRecommendationStars(results)
+			fmt.Println("\n中断前已发现的适合域名:")
+			fmt.Println(r.batchManager.FormatSuitableTable(results))
+		}
+		return
+	}
+
+	logger.PrintTimestampedMessage("扫描与检测完成！共找到 %d 个符合策略的优质 REALITY 目标域名（技术基线合格总数: %d）。",
+		len(results), len(rawPool))
+
+	if len(results) > 0 {
+		r.batchManager.SortByRecommendationStars(results)
+		fmt.Println("\n适合的域名:")
+		fmt.Println(r.batchManager.FormatSuitableTable(results))
+	}
+}
+
+// executeAuto 编排一次完整的自动扫描：先扫入口 ASN，未达标时回退同地区（同国家）的其它 ASN
+func (r *RootCmd) executeAuto(opts AutoScanCLIOptions) {
+	res, err := r.executeAutoPass(opts)
+	if err != nil {
+		switch {
+		case errors.Is(err, core.ErrNoCIDRsProvided):
+			logger.PrintError("错误：未提供有效的 CIDR 扫描网段")
+		case errors.Is(err, core.ErrAllCompleted):
+			return
+		default:
+			logger.PrintError(fmt.Sprintf("扫描失败: %v", err))
+		}
+		return
+	}
+	if res == nil {
 		return
 	}
 
 	if res.IsInterrupted {
 		logger.PrintTimestampedMessage("扫描已响应用户中断 (Ctrl+C) 并安全退出。")
-		if opts.CheckAll && taskKey != "" {
+		if opts.CheckAll {
 			logger.PrintTimestampedMessage("💡 已自动保存当前网段与当前 IP 扫描断点进度，再次运行时将无缝续传。")
 		}
-		if len(res.SuitableResults) > 0 {
-			r.batchManager.SortByRecommendationStars(res.SuitableResults)
-			fmt.Println("\n中断前已发现的适合域名:")
-			fmt.Println(r.batchManager.FormatSuitableTable(res.SuitableResults))
-		}
+		r.reportAutoResults(opts, res.SuitableResults, res.RawCandidatePool, true)
 		return
 	}
 
-	// 导出候选资产池 (如果指定了 --export)
-	if opts.ExportFile != "" {
-		exportPool := &types.CandidatePool{
-			CreatedAt: time.Now(),
-			Source:    fmt.Sprintf("%s (%s)", opts.ASN, opts.Country),
-			Targets:   res.RawCandidatePool,
-		}
-		if data, err := json.MarshalIndent(exportPool, "", "  "); err == nil {
-			_ = os.WriteFile(opts.ExportFile, data, 0644)
-			logger.PrintTimestampedMessage("已将本次摸排发现的 %d 个候选资产导出至: %s", len(res.RawCandidatePool), opts.ExportFile)
+	results := res.SuitableResults
+	rawPool := res.RawCandidatePool
+
+	if r.shouldRunRegionFallback(opts, len(results)) {
+		extraResults, extraRaw := r.runRegionFallback(opts, results)
+		results = append(results, extraResults...)
+		rawPool = append(rawPool, extraRaw...)
+	}
+
+	r.reportAutoResults(opts, results, rawPool, false)
+}
+
+// shouldRunRegionFallback 判断是否需要进入同地区回退
+func (r *RootCmd) shouldRunRegionFallback(opts AutoScanCLIOptions, found int) bool {
+	if opts.NoRegionFallback || opts.CheckAll || opts.MaxTargets <= 0 {
+		return false
+	}
+	if strings.TrimSpace(opts.Country) == "" {
+		return false
+	}
+	return found < opts.MaxTargets
+}
+
+// runRegionFallback 同 ASN 扫不到足够目标时回退到「同地区 = 同国家」：
+// 先复核本地资产库里同国家的历史资产，再扩展到 ASN 注册表里同国家的其它 ASN。
+func (r *RootCmd) runRegionFallback(opts AutoScanCLIOptions, existing []*types.DetectionResult) ([]*types.DetectionResult, []*types.DetectionResult) {
+	country := strings.ToUpper(strings.TrimSpace(opts.Country))
+	logger.PrintTimestampedMessage("🛰 同 ASN 仅命中 %d/%d 个目标，回退同地区（%s）继续寻找...", len(existing), opts.MaxTargets, country)
+
+	var results []*types.DetectionResult
+	var rawPool []*types.DetectionResult
+
+	var store storage.Store
+	if s, err := initStore("", r.config); err != nil {
+		logger.PrintTimestampedMessage("⚠️ 本地资产库不可用（%v），同地区回退将仅依赖 ASN 前缀在线查询", err)
+	} else {
+		store = s
+		defer store.Close()
+	}
+
+	// 第一层：本地资产库中同国家的历史资产
+	if store != nil {
+		maxAge := time.Duration(opts.Filter.CacheMaxDays) * 24 * time.Hour
+		if records, err := store.GetTargetsByCountry(country, maxAge); err != nil {
+			logger.PrintTimestampedMessage("⚠️ 读取同国家历史资产失败: %v", err)
+		} else if len(records) > 0 {
+			logger.PrintTimestampedMessage("♻️ 同国家历史资产 %d 条，按当前策略复核...", len(records))
+			for _, rec := range records {
+				if len(existing)+len(results) >= opts.MaxTargets {
+					break
+				}
+				if rec == nil || !ipFamilyAllowed(rec.IP, opts.Filter) {
+					continue
+				}
+				res := storage.RecordToDetectionResult(rec)
+				if res == nil || domainAlreadyCollected(existing, results, res.Domain) {
+					continue
+				}
+				if passed, _ := core.FilterTarget(res, opts.Filter); passed {
+					results = append(results, res)
+				}
+			}
 		}
 	}
 
-	logger.PrintTimestampedMessage("扫描与检测完成！共找到 %d 个符合策略的优质 REALITY 目标域名（技术基线合格总数: %d）。",
-		len(res.SuitableResults), len(res.RawCandidatePool))
-
-	// 渲染经典带颜色 ASCII 表格
-	if len(res.SuitableResults) > 0 {
-		r.batchManager.SortByRecommendationStars(res.SuitableResults)
-		fmt.Println("\n适合的域名:")
-		fmt.Println(r.batchManager.FormatSuitableTable(res.SuitableResults))
+	// 第二层：ASN 注册表中同国家的其它 ASN
+	if len(existing)+len(results) >= opts.MaxTargets {
+		return results, rawPool
 	}
+	regionASNs := r.listRegionASNs(store, country, opts.ASN, opts.RegionASNs)
+	if len(regionASNs) == 0 {
+		logger.PrintTimestampedMessage("ℹ️ ASN 注册表里没有 %s 的其它可用 ASN（可先同步 ASN 注册表或换 --country），同地区回退结束", country)
+		return results, rawPool
+	}
+
+	for _, rec := range regionASNs {
+		remaining := opts.MaxTargets - len(existing) - len(results)
+		if remaining <= 0 {
+			break
+		}
+		asnStr := fmt.Sprintf("AS%d", rec.ASN)
+		cidrs := r.regionCIDRs(asnStr, country, opts.Filter)
+		if len(cidrs) == 0 {
+			continue
+		}
+		passOpts := opts
+		passOpts.ASN = asnStr
+		passOpts.CIDRs = cidrs
+		passOpts.MaxTargets = remaining
+		passOpts.CheckAll = false
+		passOpts.ExportFile = ""
+		passOpts.Scope = fmt.Sprintf("同地区 %s / %s", country, asnStr)
+		passOpts.InitialResults = append(append([]*types.DetectionResult{}, existing...), results...)
+
+		passRes, err := r.executeAutoPass(passOpts)
+		if err != nil {
+			if errors.Is(err, core.ErrAllCompleted) {
+				continue
+			}
+			logger.PrintTimestampedMessage("⚠️ %s 同地区扫描失败: %v", asnStr, err)
+			continue
+		}
+		if passRes == nil {
+			continue
+		}
+		results = append(results, passRes.SuitableResults...)
+		rawPool = append(rawPool, passRes.RawCandidatePool...)
+		if passRes.IsInterrupted {
+			return results, rawPool
+		}
+	}
+
+	return results, rawPool
+}
+
+// listRegionASNs 从 ASN 注册表取同国家的其它 ASN（排除入口 ASN 与纯 CDN），按优先级降序取前 limit 个
+func (r *RootCmd) listRegionASNs(store storage.Store, country, entryASN string, limit int) []*types.ASNRecord {
+	if limit <= 0 {
+		limit = 5
+	}
+	if store == nil {
+		return nil
+	}
+	if _, err := asn.NewRegistryManager(store, 15*time.Second).EnsureRegistrySeeded(); err != nil {
+		logger.PrintTimestampedMessage("⚠️ ASN 注册表初始化失败: %v", err)
+	}
+	records, err := store.ListASNs("", 0, 500, 0)
+	if err != nil {
+		logger.PrintTimestampedMessage("⚠️ 读取 ASN 注册表失败: %v", err)
+		return nil
+	}
+
+	entry := strings.ToUpper(strings.TrimSpace(entryASN))
+	entryNum := strings.TrimPrefix(entry, "AS")
+
+	var picked []*types.ASNRecord
+	for _, rec := range records {
+		if rec == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(rec.Country), country) {
+			continue
+		}
+		if entry != "" && (strconv.Itoa(rec.ASN) == entryNum) {
+			continue
+		}
+		if rec.Priority <= 0 {
+			continue // 纯 CDN 或已判定无价值的种子
+		}
+		if isCDN, _ := asn.IsPureCDNASN(rec.ASN, rec.Name); isCDN {
+			continue
+		}
+		picked = append(picked, rec)
+	}
+
+	sort.SliceStable(picked, func(i, j int) bool { return picked[i].Priority > picked[j].Priority })
+	if len(picked) > limit {
+		picked = picked[:limit]
+	}
+	return picked
+}
+
+// regionCIDRs 查询某个 ASN 的宣布前缀，筛出同国家且符合协议族限制的网段
+func (r *RootCmd) regionCIDRs(asnStr, country string, filter types.FilterConfig) []string {
+	prefixes, err := asn.NewClient(15*time.Second).FetchPrefixes(r.ctx, asnStr)
+	if err != nil {
+		logger.PrintTimestampedMessage("⚠️ %s 前缀查询失败: %v", asnStr, err)
+		return nil
+	}
+
+	reader, err := data.OpenGeoIPReader("data/Country.mmdb", "Country.mmdb")
+	if err != nil {
+		reader = nil
+	} else {
+		defer reader.Close()
+	}
+
+	cidrs, _ := filterPrefixesByCountry(prefixes, reader, country, filter)
+	if len(cidrs) == 0 {
+		// 同国家判定失败时放宽国家限制，只保留协议族（IPv6 段归属常与入口国不同）
+		cidrs = filterPrefixesByFamily(prefixes, filter)
+	}
+	return cidrs
+}
+
+// domainAlreadyCollected 判断域名是否已在既有结果中，避免同地区回退重复输出
+func domainAlreadyCollected(existing, current []*types.DetectionResult, domain string) bool {
+	if domain == "" {
+		return true
+	}
+	for _, list := range [][]*types.DetectionResult{existing, current} {
+		for _, res := range list {
+			if res != nil && strings.EqualFold(res.Domain, domain) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ipFamilyAllowed 判断资产 IP 是否符合 --ipv4-only / --ipv6-only 限制
+func ipFamilyAllowed(ipStr string, filter types.FilterConfig) bool {
+	if !filter.IPv4Only && !filter.IPv6Only {
+		return true
+	}
+	addr, err := netip.ParseAddr(strings.TrimSpace(ipStr))
+	if err != nil {
+		return true
+	}
+	if filter.IPv4Only {
+		return addr.Is4()
+	}
+	return addr.Is6()
+}
+
+// filterRecordsByFamily 缓存快速通道同样必须遵守 --ipv4-only / --ipv6-only
+func filterRecordsByFamily(records []*types.TargetRecord, filter types.FilterConfig) []*types.TargetRecord {
+	if !filter.IPv4Only && !filter.IPv6Only {
+		return records
+	}
+	out := make([]*types.TargetRecord, 0, len(records))
+	for _, rec := range records {
+		if rec != nil && ipFamilyAllowed(rec.IP, filter) {
+			out = append(out, rec)
+		}
+	}
+	return out
 }
 
 func contains(slice []string, item string) bool {
@@ -368,7 +625,8 @@ func resolveAutoInput(ctx context.Context, targetInput string, inFile string, co
 
 	targetCountry := resolveTargetCountry(ctx, reader, ip, targetInput, proxyURL)
 	if targetCountry == "" {
-		return nil, "", "", fmt.Errorf("无法确定入口 IP %s 的国家：本地 GeoIP 库无该地址记录，且在线归属地查询全部失败（请检查网络，或用 --country 显式指定两位国家代码）", targetInput)
+		// 缺失归属不阻断扫描：ASN 前缀本身有效，只是放弃「同国家」这一层过滤
+		logger.PrintTimestampedMessage("⚠️ 无法确定入口 IP %s 的国家（本地 GeoIP 无记录且在线查询失败），跳过国家过滤，直接扫描该 ASN 的全部网段（也可用 --country 显式指定 ISO 代码）", targetInput)
 	}
 	overridden := strings.ToUpper(strings.TrimSpace(country))
 	if overridden != "" {
@@ -384,32 +642,16 @@ func resolveAutoInput(ctx context.Context, targetInput string, inFile string, co
 	}
 	asnStr := fmt.Sprintf("AS%d", asnNumber)
 
-	filtered := make([]string, 0, len(prefixes))
-	unknown := 0
-	for _, raw := range prefixes {
-		prefix, err := netip.ParsePrefix(raw)
-		if err != nil {
-			continue
-		}
-		// 协议族过滤
-		if filter.IPv4Only && !prefix.Addr().Is4() {
-			continue
-		}
-		if filter.IPv6Only && !prefix.Addr().Is6() {
-			continue
-		}
-		// 本地库有记录时按国家严格过滤；查不到（IPv6 段覆盖不全很常见）时保留，
-		// 因为该网段确实属于这个 ASN，仅凭本地库缺失不足以否认它。
-		switch prefixCountry(reader, prefix.Addr()) {
-		case targetCountry:
-			filtered = append(filtered, prefix.String())
-		case "":
-			unknown++
-			filtered = append(filtered, prefix.String())
-		}
-	}
+	filtered, unknown := filterPrefixesByCountry(prefixes, reader, targetCountry, filter)
 	if len(filtered) == 0 {
-		return nil, asnStr, targetCountry, fmt.Errorf("AS%d 没有与入口 IP 同国家（%s）且符合 IP 协议族限制的宣布网段", asnNumber, targetCountry)
+		// 协议族 / 国家双重过滤后为空：先放宽国家限制再判断是否真的没网段。
+		// IPv6 段的 GeoIP 归属常与入口 IP 不同，按国家严格过滤会把整个 ASN 判死。
+		if relaxed := filterPrefixesByFamily(prefixes, filter); len(relaxed) > 0 {
+			logger.PrintTimestampedMessage("⚠️ %s 在 %s 内没有符合条件的网段，已放宽国家限制（IPv6 段归属常与入口国不同），保留 %d 个网段",
+				asnStr, targetCountry, len(relaxed))
+			return relaxed, asnStr, targetCountry, nil
+		}
+		return nil, asnStr, targetCountry, fmt.Errorf("AS%d 没有符合 IP 协议族限制的宣布网段", asnNumber)
 	}
 	if unknown > 0 {
 		logger.PrintTimestampedMessage("入口 IP %s 属于 %s，国家 %s；已过滤为 %d 个网段（其中 %d 个本地库无归属记录，按 ASN 归属保留）",
@@ -419,6 +661,60 @@ func resolveAutoInput(ctx context.Context, targetInput string, inFile string, co
 	logger.PrintTimestampedMessage("入口 IP %s 属于 %s，国家 %s；已过滤为 %d 个同国家网段",
 		targetInput, asnStr, targetCountry, len(filtered))
 	return filtered, asnStr, targetCountry, nil
+}
+
+// filterPrefixesByFamily 只按协议族过滤宣布前缀
+func filterPrefixesByFamily(prefixes []string, filter types.FilterConfig) []string {
+	out := make([]string, 0, len(prefixes))
+	for _, raw := range prefixes {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			continue
+		}
+		if filter.IPv4Only && !prefix.Addr().Is4() {
+			continue
+		}
+		if filter.IPv6Only && !prefix.Addr().Is6() {
+			continue
+		}
+		out = append(out, prefix.String())
+	}
+	return out
+}
+
+// filterPrefixesByCountry 先按协议族、再按国家过滤前缀。
+// country 为空时只做协议族过滤；本地库缺失归属的前缀保留（IPv6 段覆盖不全很常见，
+// 仅凭本地库缺失不足以否认该网段属于这个 ASN）。
+func filterPrefixesByCountry(prefixes []string, reader *geoip2.Reader, country string, filter types.FilterConfig) ([]string, int) {
+	country = strings.ToUpper(strings.TrimSpace(country))
+	filtered := make([]string, 0, len(prefixes))
+	unknown := 0
+
+	for _, raw := range prefixes {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			continue
+		}
+		if filter.IPv4Only && !prefix.Addr().Is4() {
+			continue
+		}
+		if filter.IPv6Only && !prefix.Addr().Is6() {
+			continue
+		}
+		if country == "" {
+			filtered = append(filtered, prefix.String())
+			continue
+		}
+		switch prefixCountry(reader, prefix.Addr()) {
+		case country:
+			filtered = append(filtered, prefix.String())
+		case "":
+			unknown++
+			filtered = append(filtered, prefix.String())
+		}
+	}
+
+	return filtered, unknown
 }
 
 // resolveTargetCountry 先查本地 GeoIP 库，缺失时（IPv6 覆盖不全很常见）回退到在线查询。
@@ -537,7 +833,7 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 			"  --in FILE            从文件中批量读取 CIDR/IP 列表 (每行一个)",
 			"  --country CODE       按两位 ISO 国家代码过滤（默认使用入口 IP 国家）",
 			"  --no-check           跳过data资源检测",
-			"  --limit N / -m       指定获取合适目标的数量上限 (默认 5)",
+			"  --limit N / -m       指定获取合适目标的数量上限 (默认 10)",
 			"  --check-all / -a     开启全量摸底扫描模式 (不提前终止，全量入库，支持断点续传)",
 			"  --reset-scan         重置断点记录，从第 1 个网段重新扫描",
 			"  --threads N / -t     设置网络扫描并发协程数 (默认 200，高性能机器可设 500-1000)",
@@ -546,6 +842,9 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 			"  --recheck            对本地资产库命中目标发起在线网络复核",
 			"  --ipv4-only / -4     仅拉取与扫描 IPv4 网段",
 			"  --ipv6-only / -6     仅拉取与扫描 IPv6 网段",
+			"  --ipv6-budget N      IPv6 单个网段探针预算 (默认 4096；IPv6 主机位按伪随机 IID 稀疏采样)",
+			"  --no-region-fallback 同 ASN 目标不足时不回退同地区（同国家）",
+			"  --region-asns N      同地区回退最多尝试的其它 ASN 个数 (默认 5 个)",
 			"  --export FILE        将扫描发现的所有合格资产导出为 JSON 文件",
 			"  --no-cdn             强制筛选无 CDN 节点 (默认开启)",
 			"  --allow-cdn          允许 CDN 节点",
@@ -572,7 +871,9 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 	checkAll := false
 	noCache := false
 	verbose := false
-	maxTargets := 5
+	maxTargets := 10
+	regionASNs := 5
+	noRegionFallback := false
 	filter := r.batchManager.GetConfig().Filter
 
 	for i := 0; i < len(args); i++ {
@@ -666,6 +967,22 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 		case "--ipv6-only", "-6":
 			filter.IPv6Only = true
 			filter.IPv4Only = false
+		case "--ipv6-budget":
+			if i+1 < len(args) {
+				if b, err := strconv.Atoi(args[i+1]); err == nil && b > 0 {
+					filter.IPv6Budget = b
+				}
+				i++
+			}
+		case "--no-region-fallback":
+			noRegionFallback = true
+		case "--region-asns":
+			if i+1 < len(args) {
+				if n, err := strconv.Atoi(args[i+1]); err == nil && n > 0 {
+					regionASNs = n
+				}
+				i++
+			}
 		case "-v", "--verbose":
 			verbose = true
 			filter.Verbose = true
@@ -700,6 +1017,9 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 			defer store.Close()
 			maxAge := time.Duration(filter.CacheMaxDays) * 24 * time.Hour
 			cachedRecords, _ := store.GetTargetsByASN(asnStr, countryStr, maxAge)
+			// 缓存快速通道也必须遵守 --ipv4-only / --ipv6-only，否则会直接把上一次
+			// 另一协议族的资产吐出来（IPv6 资产在 IPv4 扫描里被当成本次结果）。
+			cachedRecords = filterRecordsByFamily(cachedRecords, filter)
 
 			if len(cachedRecords) > 0 {
 				if !filter.VerifyCache {
@@ -796,15 +1116,18 @@ func (r *RootCmd) parseAndExecuteAuto(args []string) {
 	}
 
 	r.executeAuto(AutoScanCLIOptions{
-		CIDRs:          cidrs,
-		MaxTargets:     maxTargets,
-		CheckAll:       checkAll,
-		ExportFile:     exportFile,
-		Filter:         filter,
-		ASN:            asnStr,
-		Country:        countryStr,
-		InitialResults: cachedVerified,
-		Verbose:        verbose,
+		CIDRs:            cidrs,
+		MaxTargets:       maxTargets,
+		CheckAll:         checkAll,
+		ExportFile:       exportFile,
+		Filter:           filter,
+		ASN:              asnStr,
+		Country:          countryStr,
+		Scope:            "同 ASN",
+		NoRegionFallback: noRegionFallback,
+		RegionASNs:       regionASNs,
+		InitialResults:   cachedVerified,
+		Verbose:          verbose,
 	})
 }
 
@@ -837,6 +1160,9 @@ func formatNonDefaultFilters(filter types.FilterConfig) []string {
 	}
 	if filter.ScanTimeout != def.ScanTimeout && filter.ScanTimeout > 0 {
 		diffs = append(diffs, fmt.Sprintf("单IP超时=%d秒 (默认%d秒)", filter.ScanTimeout, def.ScanTimeout))
+	}
+	if filter.IPv6Budget != def.IPv6Budget && filter.IPv6Budget > 0 {
+		diffs = append(diffs, fmt.Sprintf("IPv6网段探针预算=%d (默认%d)", filter.IPv6Budget, def.IPv6Budget))
 	}
 	if filter.MaxHandshakeMS != def.MaxHandshakeMS && filter.MaxHandshakeMS > 0 {
 		diffs = append(diffs, fmt.Sprintf("最大握手延迟=%dms", filter.MaxHandshakeMS))

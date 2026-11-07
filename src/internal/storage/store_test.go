@@ -654,5 +654,47 @@ func TestQueryTargets_FilterConditions(t *testing.T) {
 	_ = boolFalse
 }
 
+// GetTargetsByCountry 是同地区回退的第一层：只召回同国家、有效且在缓存期内的资产
+func TestTargetStore_GetTargetsByCountry(t *testing.T) {
+	tempDir := t.TempDir()
+	store, err := NewTargetStore(filepath.Join(tempDir, "country.db"))
+	if err != nil {
+		t.Fatalf("failed to create TargetStore: %v", err)
+	}
+	defer store.Close()
+
+	records := []*types.TargetRecord{
+		{ASN: "AS24940", Country: "DE", Domain: "fresh.de", IP: "203.0.113.10", Stars: 5, LastCheckedAt: time.Now()},
+		{ASN: "AS51167", Country: "DE", Domain: "stale.de", IP: "203.0.113.11", Stars: 4, LastCheckedAt: time.Now().Add(-30 * 24 * time.Hour)},
+		{ASN: "AS14061", Country: "US", Domain: "us.example.com", IP: "198.51.100.7", Stars: 4, LastCheckedAt: time.Now()},
+	}
+	if err := store.UpsertTargets(records); err != nil {
+		t.Fatalf("failed to upsert targets: %v", err)
+	}
+
+	got, err := store.GetTargetsByCountry("de", 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetTargetsByCountry failed: %v", err)
+	}
+	if len(got) != 1 || got[0].Domain != "fresh.de" {
+		t.Fatalf("同国家 + 缓存期内应只命中 fresh.de，实际 %v", got)
+	}
+
+	// maxAge = 0 表示不限时间，同国家两条都返回
+	all, err := store.GetTargetsByCountry("DE", 0)
+	if err != nil {
+		t.Fatalf("GetTargetsByCountry(maxAge=0) failed: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("maxAge=0 应返回 2 条德国资产，实际 %d", len(all))
+	}
+
+	// 空国家直接返回空集，不查库
+	empty, err := store.GetTargetsByCountry("", 0)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("空国家应返回空集，实际 %v (err=%v)", empty, err)
+	}
+}
+
 
 
