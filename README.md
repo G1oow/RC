@@ -35,7 +35,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: 否
   公钥: 1 条  |  ufw: 已启用
-  reality-checker: 已安装  |  tcpfit: 已安装
+  引擎: 已安装  |  tcpfit: 已安装
 
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口

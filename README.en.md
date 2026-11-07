@@ -35,7 +35,7 @@ Running `rc` drops you on this screen: a banner, one status line (OS, SSH port, 
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: 否
   公钥: 1 条  |  ufw: 已启用
-  reality-checker: 已安装  |  tcpfit: 已安装
+  引擎: 已安装  |  tcpfit: 已安装
 
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口

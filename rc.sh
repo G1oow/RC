@@ -237,7 +237,7 @@ tool_state() { # $1 = 可执行路径
 status_brief() {
   printf '  系统: %s  |  SSH 端口: %s  |  密码登录: %s\n' "$(os_name)" "$(effective_ssh_port)" "$(ssh_password_auth)"
   printf '  公钥: %s 条  |  ufw: %s\n' "$(auth_key_count)" "$(ufw_state)"
-  printf '  reality-checker: %s  |  tcpfit: %s' \
+  printf '  引擎: %s  |  tcpfit: %s' \
     "$(tool_state "${RC_DIR}/reality-checker-main")" \
     "$(command -v tcpfit >/dev/null 2>&1 && printf '已安装' || printf '未安装')"
 }
@@ -254,7 +254,7 @@ status_full() {
   printf '  公钥条数        : %s\n' "$(auth_key_count)"
   printf '  ufw             : %s\n' "$(ufw_state)"
   printf '  出口 IP         : %s\n' "${ip:-探测失败}"
-  printf '  reality-checker : %s (%s)\n' "$(tool_state "${RC_DIR}/reality-checker-main")" "$RC_DIR"
+  printf '  引擎            : %s (%s)\n' "$(tool_state "${RC_DIR}/reality-checker-main")" "$RC_DIR"
   printf '  tcpfit          : %s\n' "$(tool_state "$(command -v tcpfit 2>/dev/null || printf /usr/local/bin/tcpfit)")"
   printf '  配置文件        : %s\n' "$( [[ -f $CONF_FILE ]] && printf '已存在' || printf '未创建')"
   printf '  备份目录        : %s\n' "$BACKUP_ROOT"
