@@ -51,6 +51,17 @@ go test ./...
 - 不从本地直接推 `main`：走分支 + PR，合并信息用 merge commit。
 - 版本 tag 形如 `v1.2.3`，push tag 会触发 `.github/workflows/build.yml` 构建三平台产物并发布 Release。
 
+## 自动化与发布边界
+
+协作代理默认只做到「提出变更」为止。下列动作必须由维护者明确指令，**不能**从「提 PR」「触发构建」「更新 tag」这类话里自行推断出前置步骤：
+
+- **合并 PR**：`gh pr merge` 或任何合并动作。PR 创建完就停下，等维护者自己合并。
+- **打 tag 与发布**：`git tag`、`git push origin <tag>`、`gh release create` / `edit` / `delete`。
+- **改写已发布内容**：已发布 Release 的正文与资产、已推送的 tag。
+- **重写历史**：`git push --force`、`git reset --hard`、`git rebase`、删除远端分支或 tag。
+
+需要前置步骤才能继续时（例如「打 tag」要求改动先落在 `main` 上），只报告卡点与可选路径，不自行补齐。口径对照：用户说「提 PR」= 只创建 PR；说「触发构建」= 不包含合并 PR。
+
 ## 对外口径与脱敏
 
 - 项目自称 **RC**；面板与引擎的措辞见「项目定位」。
