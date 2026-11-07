@@ -2,9 +2,8 @@
 
 > 本项目仅用于网络技术研究与学习。请遵守当地法律法规，合理使用网络资源。
 
-叫什么名字没想好，one-reality or reasni？
-是一个用于针对特定ip扫描和匹配reality目标的引擎。
-因为reality 目标域名的最佳实践是
+本目录是 RC 面板的底层扫描引擎：针对指定 IP 展开 ASN 网段并筛选可用的 REALITY 伪装目标，另带 24 小时 ASN 轮转守护。引擎由面板（`rc reality`）自动安装与调用，也可独立以 CLI / `daemon` 方式运行。
+reality 目标域名的最佳实践是：
 
 - **与入口 VPS 同 ASN / 同机房**：流量特征自然，延迟一致；
 - **不使用公共 CDN**：防止 VPS 变成公网免费反代，避免 CDN 封锁；
@@ -34,10 +33,7 @@
   - **双引擎统一抽象**：轻量单机开箱即用 **SQLite (WAL 模式)**，大规模分布式生产无缝切换 **PostgreSQL (`pgxpool`)**，单库稳定承载 10万+ 活跃伪装资产池；
   - **存量健康巡检与自愈 (Patrol & Auto-Purge)**：后台自动化资产巡检体系，周期性淘汰失效域名，支持全量合规资产导出与导入。
 
-- **多形态接入服务体系**：
-  - **RESTful API & SSE 流式长连接**：提供 `/api/targets/smart`、`/api/targets/stream`、`/api/targets/check` 标准接口，完美契合中间件与控制面板集成；
-  - **嵌入式可视化控制台 (Web UI)**：基于 React + TypeScript 构建，支持单二进制内嵌分发（`go:embed`），可视化管理资产、ASN 队列与即时测算；
-  - **高并发 CLI & 管道流式处理**：原生支持 `reality-checker pipe` 管道批量验证与 `Ctrl+C` 平滑中断输出。
+- **CLI 与管道流式处理**：`get` / `auto` / `asn` / `check` / `batch` / `pipe` 覆盖单点查询与批量验证，`pipe` 支持 stdin 流式读取与 `Ctrl+C` 平滑中断输出。
 ---
 
 ## ⚡ 一键安装与 Systemd 守护进程部署 (NanoPi / VPS)
@@ -48,8 +44,8 @@
 # 在线一键极速安装 (自动识别 CPU 架构，嵌入式设备自适应并发限流)
 curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash
 
-# 自定义 Token 与并发参数安装 (例如软路由/单板盒子建议 -t 150)
-curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- --token my-secret-token -t 150
+# 自定义并发参数安装 (例如软路由/单板盒子建议 -t 150)
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- -t 150
 ```
 
 > 💡 **单板电脑 / NanoPi 优化提示**：安装脚本会自动读取设备特征（NanoPi / Armbian / 内存 < 2GB），默认将并发协程数优化为 `-t 150`，避免并发 TCP 探测占满家用路由器的 NAT 连接表（Conntrack）。详细调优策略请参阅 [Systemd 守护进程部署运维文档](doc/deploy/systemd-daemon.md)。
@@ -59,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.s
 reasni-service status   # 查看守护进程运行状态
 reasni-service log      # 查看实时追踪扫描日志
 reasni-service restart  # 重启服务
-reasni-service config   # 快捷修改启动参数与 Token (/etc/default/reasni)
+reasni-service config   # 快捷修改启动参数 (/etc/default/reasni)
 reasni-service update   # 一键热升级至最新版本
 ```
 
@@ -253,11 +249,11 @@ concurrency:
 
 ### 1. 直接下载
 
-从 [Releases](https://github.com/V2RaySSR/RealityChecker/releases) 下载对应平台的免安装压缩包。
+从 [Releases](https://github.com/G1oow/RC/releases) 下载对应平台的免安装压缩包。
 
 ### 2. 本地构建
 
-需要 Go 1.25 或更高版本。构建产物自动输出到 `dist/`，包含 Linux `amd64`/`arm64` 和 Windows `amd64`（采用纯 Go 驱动，完全免 CGO 静态编译）：
+需要 Go 1.26 或更高版本。构建产物自动输出到 `dist/`，包含 Linux `amd64`/`arm64` 和 Windows `amd64`（采用纯 Go 驱动，完全免 CGO 静态编译）：
 
 ```bash
 # Linux / macOS

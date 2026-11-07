@@ -129,8 +129,6 @@ func (r *RootCmd) Execute(customArgs ...[]string) {
 	}
 
 	switch subCmd {
-	case "serve":
-		r.executeServe(subArgs)
 	case "daemon":
 		r.executeDaemon(subArgs)
 	case "patrol":
@@ -183,7 +181,7 @@ func (r *RootCmd) Execute(customArgs ...[]string) {
 	default:
 		logger.PrintErrorWithDetails(
 			fmt.Sprintf("错误：未知命令 '%s'", subCmd),
-			"可用命令: get, serve, daemon, patrol, auto, asn, migrate, pipe, check, batch, version",
+			"可用命令: get, daemon, patrol, auto, asn, migrate, pipe, check, batch, version",
 		)
 		os.Exit(1)
 	}

@@ -15,33 +15,6 @@ LDFLAGS="-s -w -X 'RealityChecker/internal/version.AppName=${APP_NAME}' -X 'Real
 mkdir -p "${DIST_DIR}"
 rm -f "${DIST_DIR}"/reality-checker*
 
-# 构建前端静态资源：web/embed.go 里有 //go:embed dist/*，
-# 缺少 web/dist 时 go build 会直接失败，所以必须先构建前端。
-build_web() {
-  echo "Building web assets (web/dist)..."
-  local web_dir="${ROOT_DIR}/web"
-  if [ ! -f "${web_dir}/package.json" ]; then
-    echo "Error: ${web_dir}/package.json not found."
-    exit 1
-  fi
-
-  if command -v pnpm >/dev/null 2>&1; then
-    ( cd "${web_dir}" && pnpm install --frozen-lockfile && pnpm run build )
-  elif command -v npm >/dev/null 2>&1; then
-    ( cd "${web_dir}" && npm ci && npm run build )
-  else
-    echo "Error: neither pnpm nor npm found; cannot build web assets."
-    exit 1
-  fi
-
-  if [ ! -f "${web_dir}/dist/index.html" ]; then
-    echo "Error: web build produced no dist/index.html."
-    exit 1
-  fi
-  echo "Web assets ready at ${web_dir}/dist."
-}
-
-build_web
 # 准备编译时内置资产（Country.mmdb）
 ASSETS_DIR="${ROOT_DIR}/internal/data/assets"
 mkdir -p "${ASSETS_DIR}"

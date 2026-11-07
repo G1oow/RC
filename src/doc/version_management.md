@@ -94,7 +94,7 @@ Reality协议目标网站检测工具
 版本: v3.0.0
 提交: 1a76f16
 构建时间: 2026-08-03_13:12:47
-GitHub: https://github.com/V2RaySSR/RealityChecker
+GitHub: https://github.com/G1oow/RC
 ```
 
 ---

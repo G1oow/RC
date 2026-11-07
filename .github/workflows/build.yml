@@ -28,21 +28,6 @@ jobs:
         go-version-file: src/go.mod
         cache-dependency-path: src/go.sum
 
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v6
-      with:
-        # 与 web/pnpm-lock.yaml 的 lockfileVersion 9.0 对齐
-        version: 9
-        # v6 起 run_install 更名为 install
-        install: false
-
-    - name: Set up Node
-      uses: actions/setup-node@v7
-      with:
-        node-version: '22'
-        cache: 'pnpm'
-        cache-dependency-path: src/web/pnpm-lock.yaml
-        
     - name: Get version from tag
       id: version
       run: |
@@ -81,63 +66,44 @@ jobs:
         files: |
           src/dist/*
         body: |
-          ## RealityChecker ${{ steps.version.outputs.version }}
+          ## RC ${{ steps.version.outputs.version }}
 
-          RealityChecker 用于发现、检测和筛选适合作为 Reality SNI 的目标网站。
+          RC 是 VPS 聚合运维面板：SSH 加固、连通体检与调优、REALITY 伪装目标筛选，集中在一个 `rc` 面板里。
 
           ### 本次更新
 
-          - 新增 Systemd 守护进程服务单元与 `install.sh` 极速安装运维脚本
-          - 针对 NanoPi / 树莓派 / Armbian 嵌入式设备优化并发限流，防 NAT 表溢出
-          - 新增 `reasni-service` 统一运维快捷命令（start/stop/restart/log/status/config）
-          - 新增 `serve` 和 `get` 子命令，支持 HTTP API 与 CLI 目标发现/查询能力
-          - 新增 HTTP 服务端支持：CORS、SSE 流式输出、批量 REST API
-          - 新增 `ProvisionService`，支持 cache-first 与 streaming target discovery
-          - 重构并统一 batch 与 core 的目标过滤、排序逻辑
-          - 优化扫描管道与并发控制，修复高并发下潜在死锁和性能问题
-          - 改进 TLS/X25519 检测的快速路径，降低冗余握手开销
-          - 增强扫描器 checkpoint / resume 能力，支持中断后继续扫描
-          - 改进网络与存储层能力，包括 SQLite 资产数据库、自动表升级与更稳健的连接管理
-          - 优化 UI 与输出信息，提升扫描过程可见性与诊断体验
+          - 下线内置 Web 控制台与 REST/SSE 服务：删除前端工程、HTTP 服务端与 `serve` 子命令
+          - `daemon` 不再监听端口，`--port/--host/--token/--no-http` 退化为兼容旧参数的无效项，请从 `/etc/default/reasni` 中删除
+          - 构建链只依赖 Go：移除 pnpm / Node 步骤与前端产物校验
+          - 保留引擎侧 `get` / `auto` / `asn` / `check` / `batch` / `pipe` / `daemon` / `patrol` / `migrate` 能力
+          - 修正面板与文档中对外呈现的项目口径
 
-          ### 核心能力
+          ### 面板能力
 
-          - **IP 直接查询**：输入 VPS IP，自动查询所属 ASN、获取 RIPEstat 宣布网段，并按国家过滤候选 CIDR。
-          - **自动扫描与筛选**：检测 TLS 1.3、X25519、HTTP/2、证书、SNI、握手延迟、重定向、地理位置和 CDN。
-          - **推荐结果排序**：根据 CDN、热门网站、证书有效期、握手延迟和协议支持情况输出推荐星级。
-          - **多种工作流**：支持 ASN 网段查询、单域名、批量域名、CSV 文件和 stdin 管道检测。
+          - **SSH 加固**：写入公钥与改端口、只改端口、关闭密码登录、配置回滚（改动前备份，`sshd -t` 校验，失败自动回滚）
+          - **体检与调优**：TCP 质量检测（TcpQuality）、NQ 测试（NodeQuality）、TCP 调优（tcpfit）
+          - **目标筛选**：自动探测出口 IP 并调用引擎扫描，输出带星级的 REALITY 伪装目标
+          - **维护**：默认设置、面板自更新、执行日志、卸载
 
           ### 推荐工作流
 
           ```bash
-          # 从 VPS IP 自动发现并筛选目标
-          ./reality-checker auto 203.0.113.10 --limit 5
+          # 安装面板并进入交互菜单
+          curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh -o /usr/local/bin/rc
+          chmod +x /usr/local/bin/rc && rc
 
-          # 查询 ASN 在指定国家的网段
-          ./reality-checker asn AS15169 US > as15169-us.txt
-
-          # 扫描自定义网段文件
-          ./reality-checker auto --in as15169-us.txt --limit 10
-          ```
-
-          `auto` 输入单个 IPv4 会扩展为对应 `/24` 网段，IPv6 会扩展为 `/64`；输入 CIDR 时直接扫描该网段。
-          `--limit` 表示最终保留的合适目标数量上限，默认值为 5。
-
-          ### 其他用法
-
-          ```bash
-          ./reality-checker check example.com
-          ./reality-checker batch example.com example.org
-          ./reality-checker csv result.csv
-          cat domains.txt | ./reality-checker pipe
+          # 或直接跑单项
+          rc ssh          # 写入公钥 + 改 SSH 端口 + 放行防火墙
+          rc tcpq         # TCP 质量检测
+          rc reality      # REALITY 伪装目标筛选
           ```
 
           ### 质量状态
 
-          - 已通过 `go test ./...`
           - 已通过 `go build ./...`
+          - 已通过 `go test ./...`
 
-          请从下方 Assets 下载对应平台的构建产物；完整参数、配置和结果字段说明见本仓库根目录的 `README.md`。
+          请从下方 Assets 下载对应平台的引擎产物；面板安装与配置说明见仓库根目录的 `README.md`。
 
           > 本工具仅用于技术研究和学习，请遵守当地法律法规并合理使用网络资源。
         draft: false
