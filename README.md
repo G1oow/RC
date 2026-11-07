@@ -23,7 +23,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
 ## 面板长这样
 
-装好后输入 `rc`，看到的就是这一屏：横幅下面一行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、引擎与 tcpfit 状态），再按四个分区列出 13 个入口。
+装好后输入 `rc`，看到的就是这一屏：横幅下面三行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、TCP 拥塞控制算法、引擎与 tcpfit 状态），再按四个分区列出 14 个入口。
 
 ```text
   ____   ____
@@ -31,10 +31,11 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
  | |_) | |
  |  _ <| |___
  |_| \_\____|  VPS 聚合面板
-  rc v1.0.0   (实机执行)
 
-  系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: 否
-  公钥: 1 条  |  ufw: 已启用
+  rc v1.3.0   (实机执行)
+
+  系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
+  公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
   引擎: 已安装  |  tcpfit: 已安装
 
 【SSH 加固】
@@ -53,12 +54,13 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
    12) 查看执行日志
 
 【危险】
-   13) 卸载 rc
+   13) 卸载 rc（含引擎/tcpfit）
+   14) 模块单独卸载
 
   ─────────────────────────────────────────
     0) 退出
 
-  请选择 [0-13]:
+  请选择 [0-14]:
 ```
 
 ## 面板能力
@@ -68,10 +70,11 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 | SSH 加固 | `1` 写入公钥 + 改端口 | 追加公钥、改 SSH 端口、放行防火墙；改前备份到 `/root/vps-init-backup`，改后 `sshd -t` 校验，失败自动回滚 |
 | SSH 加固 | `2` 只改端口 / `3` 关闭密码登录 / `4` 回滚 | 分步收紧；关闭密码登录会先确认新端口可登录；回滚可还原到任一份备份 |
 | 体检与调优 | `5` TCP 质量检测 / `6` NQ 测试 / `7` TCP 调优 | 依次拉起 TcpQuality、NodeQuality、tcpfit，测完再按面板提示调整内核参数 |
-| 目标筛选 | `8` Reality 目标扫描 | 自动探测本机出口 IP，调用扫描引擎按 ASN 网段扫描并输出带星级的候选域名 |
+| 目标筛选 | `8` Reality 目标扫描 | 每次都重新询问扫描 IPv4 / IPv6 / 双栈（不记忆上次选择），再调用引擎按 ASN 网段扫描；同 ASN 找不到合适目标时自动回退同地区（同国家）继续找 |
 | 目标筛选 | `9` 重装扫描引擎 | 引擎缺失或损坏时按需重装到 `RC_DIR` |
-| 维护 | `10` 默认设置 / `11` 更新 rc / `12` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限；自更新面板；查看 `/var/log/rc-manager.log` |
-| 危险 | `13` 卸载 rc | 删除 `rc`、`RC` 软链接、`/etc/rc-manager` 与日志；已装的引擎、tcpfit、SSH 改动与备份目录全部保留 |
+| 维护 | `10` 默认设置 / `11` 更新 rc / `12` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限、备份保留份数、SSH 自动回滚；自更新面板；查看 `/var/log/rc-manager.log` |
+| 危险 | `13` 卸载 rc | 删除 `rc`、`RC` 软链接、引擎目录、tcpfit（含 iperf3）、`/etc/rc-manager` 与日志；保留 SSH 改动、备份目录与资产库备份 |
+| 危险 | `14` 模块单独卸载 | 只卸某一个模块：扫描引擎 / tcpfit / iperf3 / rc 配置与日志 |
 
 面板对系统是有副作用的：`DRY_RUN=1` 下所有改动只打印不执行，第一次使用建议先试跑一遍。
 
@@ -98,25 +101,27 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc score` | NQ 测试（NodeQuality） |
 | `rc tune` | TCP 调优（tcpfit） |
 | `rc reality` | REALITY 伪装目标筛选 |
-| `rc status` | 查看系统、SSH、ufw、引擎与 tcpfit 状态 |
-| `rc rollback` | 回滚 SSH 配置 |
+| `rc status` | 查看系统、SSH、ufw、TCP 拥塞控制算法、引擎与 tcpfit 状态 |
+| `rc rollback` | 回滚 SSH 配置（`--yes` 跳过确认；默认同时还原 `/etc/ssh` 与 socket drop-in） |
+| `rc rollback-cancel` | 取消排定的 SSH 自动回滚 |
 | `rc install-self` | 把面板安装/修复到 `/usr/local/bin/rc` |
 | `rc update` | 更新面板自身 |
-| `rc uninstall` | 卸载面板 |
+| `rc uninstall` | 卸载面板 + 已装引擎 + tcpfit + iperf3 |
+| `rc uninstall engine\|tcpfit\|iperf3\|conf` | 只卸载指定模块 |
 | `rc help` | 显示帮助 |
 
 旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 原为 sb 面板，现已不再联动）。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
 
 ## 面板与引擎
 
-`rc reality` 会先确保引擎就绪，再探测本机出口 IP（`icanhazip.com`），最后调用引擎扫描并打印结果。目标域名的选型标准由引擎负责：同 ASN / 同机房、非公共 CDN、非热门大站、TLS 1.3 + X25519 + HTTP/2 握手真实可用、证书剩余有效期足够、握手延迟低。
+`rc reality` 会先确保引擎就绪，然后**每次都询问**本次扫描的协议族（IPv4 / IPv6 / 双栈，不记忆上一次的选择），再调用引擎扫描并打印结果。目标域名的选型标准由引擎负责：同 ASN / 同机房、非公共 CDN、非热门大站、TLS 1.3 + X25519 + HTTP/2 握手真实可用、证书剩余有效期足够、握手延迟低；同 ASN 命中不足时回退到同国家（同地区）的其它 ASN 与本地历史资产。默认保留 10 个目标。
 
 引擎独立运行时保留完整 CLI 能力，面板只是它的一个调用方：
 
 | 引擎命令 | 作用 |
 |---|---|
 | `get <ip> [-n 5] [-s 3] [--fresh] [--json]` | 按 IP 取星级目标，缓存优先 |
-| `auto <ip/cidr> [--limit 5] [-v]` | 查输入的 ASN 网段并并发扫描入库 |
+| `auto <ip/cidr> [--limit 10] [--ipv4-only\|--ipv6-only] [-v]` | 查输入的 ASN 网段并并发扫描入库；同 ASN 不足时回退同国家 |
 | `daemon [-t 500] [--interval 10] [--country US]` | 24 小时全网 ASN 扫描守护进程 |
 | `patrol [--daemon]` | 对库内资产复测并做生命周期维护 |
 | `asn <ASN> <国家> [--stats] [--seed]` | 查询 ASN 已宣告网段并按国家过滤 |
@@ -157,9 +162,11 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `SSH_PORT` | `30000` | 目标 SSH 端口 |
 | `SSH_PUBKEY` / `SSH_PUBKEY_FILE` | 空 | 要写入的公钥内容或公钥文件路径 |
 | `RC_DIR` | `/root/rc-new` | 扫描引擎安装目录 |
-| `SCAN_LIMIT` | `5` | `rc reality` 保留的目标条数上限 |
+| `SCAN_LIMIT` | `10` | `rc reality` 保留的目标条数上限 |
 | `DRY_RUN` | `0` | `1` 时所有改动只打印不执行 |
 | `BACKUP_ROOT` | `/root/vps-init-backup` | SSH 配置备份目录 |
+| `RC_BACKUP_KEEP` | `10` | 备份目录里每类备份保留的份数 |
+| `RC_SSH_AUTO_ROLLBACK_MIN` | `0` | 改完 SSH 后 N 分钟自动回滚（0 = 关闭，需要 `systemd-run` 或 `at`） |
 
 引擎侧的 `config.yaml` 与面板解耦，主要配置项：
 
@@ -169,6 +176,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `database.sqlite.path` | 资产库路径，默认 `data/reality_targets.db` |
 | `reality_filter.scan_threads` | 扫描并发，默认 `200` |
 | `reality_filter.scan_timeout` | 单 IP 握手超时秒数，默认 `3` |
+| `reality_filter.ipv6_budget` | IPv6 单网段探针预算，默认 `4096`（IPv6 主机位按伪随机 IID 稀疏采样） |
 | `reality_filter.require_no_cdn` / `require_no_cn` | 剔除 CDN 节点与国内站点 |
 | `reality_filter.check_gfw` | 静态 GFW 名单开关 |
 | `reality_filter.use_cache` / `cache_max_days` | 缓存优先与缓存有效天数，默认 7 天 |
