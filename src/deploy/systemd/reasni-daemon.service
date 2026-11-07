@@ -1,6 +1,6 @@
 [Unit]
 Description=RealityChecker ASN Scanner Daemon
-Documentation=https://github.com/qualvey/one-reality
+Documentation=https://github.com/G1oow/RC
 After=network-online.target
 Wants=network-online.target
 

@@ -46,10 +46,10 @@
 
 ```bash
 # 在线一键极速安装 (自动识别 CPU 架构，嵌入式设备自适应并发限流)
-curl -fsSL https://raw.githubusercontent.com/qualvey/one-reality/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash
 
 # 自定义 Token 与并发参数安装 (例如软路由/单板盒子建议 -t 150)
-curl -fsSL https://raw.githubusercontent.com/qualvey/one-reality/main/scripts/install.sh | bash -s -- --token my-secret-token -t 150
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash -s -- --token my-secret-token -t 150
 ```
 
 > 💡 **单板电脑 / NanoPi 优化提示**：安装脚本会自动读取设备特征（NanoPi / Armbian / 内存 < 2GB），默认将并发协程数优化为 `-t 150`，避免并发 TCP 探测占满家用路由器的 NAT 连接表（Conntrack）。详细调优策略请参阅 [Systemd 守护进程部署运维文档](doc/deploy/systemd-daemon.md)。
