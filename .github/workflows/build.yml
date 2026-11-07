@@ -137,8 +137,7 @@ jobs:
           - 已通过 `go test ./...`
           - 已通过 `go build ./...`
 
-          请从下方 Assets 下载对应平台的构建产物；完整参数、配置和结果字段说明请参阅
-          [README.md](https://github.com/qualvey/one-reality/blob/main/README.md)。
+          请从下方 Assets 下载对应平台的构建产物；完整参数、配置和结果字段说明见本仓库根目录的 `README.md`。
 
           > 本工具仅用于技术研究和学习，请遵守当地法律法规并合理使用网络资源。
         draft: false
