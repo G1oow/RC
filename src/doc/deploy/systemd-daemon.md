@@ -10,17 +10,17 @@ RealityChecker / Reasni 内置支持 24 小时全网 ASN 自动化扫描与 HTTP
 
 ::: code-group
 ```bash [在线安装 (推荐)]
-curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash
 ```
 
 ```bash [自定义参数安装]
 # 指定鉴权 Token 并限制并发为 150 (适合软路由/嵌入式盒子)
-curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash -s -- --token my-secret-token -t 150
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- --token my-secret-token -t 150
 ```
 
 ```bash [非 CN 网络强制拉起]
 # 若部署在海外 VPS 或本地出口未识别为 CN 时追加 --force
-curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash -s -- --force
+curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- --force
 ```
 :::
 

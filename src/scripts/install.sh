@@ -450,10 +450,10 @@ case "$ACTION" in
         ;;
     update)
         echo "正在更新 RealityChecker 服务..."
-        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash
+        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash
         ;;
     uninstall)
-        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/scripts/install.sh | bash -s -- --uninstall
+        curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/src/scripts/install.sh | bash -s -- --uninstall
         ;;
     *)
         echo "用法: reasni-service {start|stop|restart|status|log|config|update|uninstall}"
