@@ -45,6 +45,20 @@ func TestAutoScanner_CalculateRemainingIPs(t *testing.T) {
 	}
 }
 
+// IPv6 大网段（主机位 >= 62）按探针预算计入，否则 /64 的进度总量会是 0
+func TestAutoScanner_CalculateRemainingIPs_IPv6Budget(t *testing.T) {
+	total := CalculateRemainingIPs([]string{"2001:db8:1::/64"}, nil)
+	if total != int64(DefaultIPv6ProbeBudget) {
+		t.Fatalf("IPv6 /64 应按探针预算 %d 计入，实际 %d", DefaultIPv6ProbeBudget, total)
+	}
+
+	// 更小的 IPv6 网段仍然按真实地址数计
+	small := CalculateRemainingIPs([]string{"2001:db8:1::/120"}, nil)
+	if small != 256 {
+		t.Fatalf("IPv6 /120 应有 256 个地址，实际 %d", small)
+	}
+}
+
 func TestAutoScanner_InitialResultsLoaded(t *testing.T) {
 	initial := []*types.DetectionResult{
 		{Domain: "example.com", Suitable: true},
