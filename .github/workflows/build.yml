@@ -45,6 +45,23 @@ jobs:
         BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
         echo "time=${BUILD_TIME}" >> "${GITHUB_OUTPUT}"
         
+    # 发版前必须把 rc.sh 的 RC_VERSION 提到本次 tag 版本：
+    # 面板横幅与 rc update 都读这个字符串，落后就会显示旧版本、且自更新判定为「已是最新」
+    - name: Verify panel version matches tag
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        set -euo pipefail
+        TAG_VER="${GITHUB_REF_NAME#v}"
+        PANEL_VER="$(sed -n "s/^RC_VERSION=['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}$/\1/p" "${GITHUB_WORKSPACE}/rc.sh" 2>/dev/null | head -n1 || true)"
+        if [ -z "${PANEL_VER}" ]; then
+          echo "::error::rc.sh 里读不到 RC_VERSION"
+          exit 1
+        fi
+        if [ "${PANEL_VER}" != "${TAG_VER}" ]; then
+          echo "::error::rc.sh RC_VERSION=${PANEL_VER} 与 tag ${GITHUB_REF_NAME} 不一致：先把 RC_VERSION 改成 ${TAG_VER} 再打 tag"
+          exit 1
+        fi
+        echo "RC_VERSION=${PANEL_VER} 与 tag ${GITHUB_REF_NAME} 一致"
     - name: Build for Linux and Windows
       run: |
         VERSION="${{ steps.version.outputs.version }}" \
@@ -59,53 +76,45 @@ jobs:
         cp dist/reality-checker-linux-amd64 dist/reality-checker-main
         cp dist/reality-checker-windows-amd64.exe dist/reality-checker-main.exe
         ls -lh dist
+    # 发布说明按「上一个 tag → 本次 tag」的提交自动生成，避免正文写死后与版本脱钩
+    - name: Compose release notes
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF_NAME}"
+        VER="${TAG#v}"
+        PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+        PANEL_VER="$(sed -n "s/^RC_VERSION=['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}$/\1/p" "${GITHUB_WORKSPACE}/rc.sh" 2>/dev/null | head -n1 || true)"
+
+        {
+          printf '## RC %s\n\n' "${VER}"
+          printf 'RC 是 VPS 聚合运维面板：SSH 加固、连通体检与调优、REALITY 伪装目标筛选，集中在一个 `rc` 面板里。\n\n'
+          printf '### 本次更新\n\n'
+          if [ -n "${PREV}" ]; then
+            printf '相对 %s 的提交：\n\n' "${PREV}"
+            git log --no-merges --pretty='- %s (%h)' "${PREV}..${TAG}"
+          else
+            printf '此前的提交：\n\n'
+            git log --no-merges --pretty='- %s (%h)' -n 20 "${TAG}"
+          fi
+          printf '\n### 版本\n\n'
+          printf '* 发布版本：`%s`\n' "${TAG}"
+          printf '* 面板版本：`%s`（`rc.sh` 的 `RC_VERSION`）\n\n' "${PANEL_VER:--}"
+          printf '### 安装\n\n```bash\ncurl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash\n```\n\n'
+          printf '非 root 用 `| sudo bash`；只想安装不启动用 `| bash -s -- install-self`。\n\n'
+          printf '### 质量状态\n\n'
+          printf '* 已通过 `go build ./...`、`go vet ./...`、`go test ./...`\n\n'
+          printf '> 本工具仅用于技术研究和学习，请遵守当地法律法规并合理使用网络资源。\n'
+        } > "${GITHUB_WORKSPACE}/RELEASE_NOTES.md"
+
+        cat "${GITHUB_WORKSPACE}/RELEASE_NOTES.md"
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v3
       with:
         files: |
           src/dist/*
-        body: |
-          ## RC ${{ steps.version.outputs.version }}
-
-          RC 是 VPS 聚合运维面板：SSH 加固、连通体检与调优、REALITY 伪装目标筛选，集中在一个 `rc` 面板里。
-
-          ### 本次更新
-
-          - 下线内置 Web 控制台与 REST/SSE 服务：删除前端工程、HTTP 服务端与 `serve` 子命令
-          - `daemon` 不再监听端口，`--port/--host/--token/--no-http` 退化为兼容旧参数的无效项，请从 `/etc/default/reasni` 中删除
-          - 构建链只依赖 Go：移除 pnpm / Node 步骤与前端产物校验
-          - 保留引擎侧 `get` / `auto` / `asn` / `check` / `batch` / `pipe` / `daemon` / `patrol` / `migrate` 能力
-          - 修正面板与文档中对外呈现的项目口径
-
-          ### 面板能力
-
-          - **SSH 加固**：写入公钥与改端口、只改端口、关闭密码登录、配置回滚（改动前备份，`sshd -t` 校验，失败自动回滚）
-          - **体检与调优**：TCP 质量检测（TcpQuality）、NQ 测试（NodeQuality）、TCP 调优（tcpfit）
-          - **目标筛选**：自动探测出口 IP 并调用引擎扫描，输出带星级的 REALITY 伪装目标
-          - **维护**：默认设置、面板自更新、执行日志、卸载
-
-          ### 推荐工作流
-
-          ```bash
-          # 安装面板并进入交互菜单
-          curl -LfsS https://raw.githubusercontent.com/G1oow/RC/main/rc.sh -o /usr/local/bin/rc
-          chmod +x /usr/local/bin/rc && rc
-
-          # 或直接跑单项
-          rc ssh          # 写入公钥 + 改 SSH 端口 + 放行防火墙
-          rc tcpq         # TCP 质量检测
-          rc reality      # REALITY 伪装目标筛选
-          ```
-
-          ### 质量状态
-
-          - 已通过 `go build ./...`
-          - 已通过 `go test ./...`
-
-          请从下方 Assets 下载对应平台的引擎产物；面板安装与配置说明见仓库根目录的 `README.md`。
-
-          > 本工具仅用于技术研究和学习，请遵守当地法律法规并合理使用网络资源。
+        body_path: ${{ github.workspace }}/RELEASE_NOTES.md
         draft: false
         prerelease: false
       env:
