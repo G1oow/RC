@@ -17,13 +17,13 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" alt="MIT License"></a>
 </p>
 
-RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc`, get a menu: lock SSH down first (key, port, password login off, with rollback), then check and tune TCP (TcpQuality / NodeQuality / tcpfit), then pick REALITY camouflage domains from the same box. Every stage lives in one menu, so you stop collecting one-off script URLs.
+RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc`, get a menu: lock SSH down first (key, port, password login off, with rollback), then check and tune TCP (TcpQuality / NodeQuality / tcpfit) and stand up the sing-box panel (singbox-lite, command `sb`) while you are there, then pick REALITY camouflage domains from the same box. Every stage lives in one menu, so you stop collecting one-off script URLs.
 
 The panel holds no scanning logic itself: picking targets is delegated to the bundled scanning engine. The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
 
 ## What the menu looks like
 
-Running `rc` drops you on this screen: a banner, three status lines (OS, SSH port, password login, key count, ufw, TCP congestion control, engine and tcpfit state), then the 14 entries grouped into four sections. The menu itself is Chinese-only; every entry also has a non-interactive subcommand.
+Running `rc` drops you on this screen: a banner, three status lines (OS, SSH port, password login, key count, ufw, TCP congestion control, engine / tcpfit / sb state), then the 15 entries grouped into four sections. The menu itself is Chinese-only; every entry also has a non-interactive subcommand.
 
 ```text
   ____   ____
@@ -36,7 +36,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
   公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
-  引擎: 已安装  |  tcpfit: 已安装
+  引擎: 已安装  |  tcpfit: 已安装  |  sb: 已安装
 
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口
@@ -45,22 +45,23 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 【体检与调优】
     5) TCP 质量检测         6) NQ 测试
     7) TCP 调优(tcpfit)
+    8) sing-box 面板(sb)
 
 【目标筛选】
-    8) Reality 目标扫描     9) 重装扫描引擎
+    9) Reality 目标扫描     10) 重装扫描引擎
 
 【维护】
-   10) 默认设置            11) 更新 rc
-   12) 查看执行日志
+   11) 默认设置            12) 更新 rc
+   13) 查看执行日志
 
 【危险】
-   13) 卸载 rc（含引擎/tcpfit）
-   14) 模块单独卸载
+   14) 卸载 rc（含引擎/tcpfit）
+   15) 模块单独卸载
 
   ─────────────────────────────────────────
     0) 退出
 
-  请选择 [0-14]:
+  请选择 [0-15]:
 ```
 
 ## What the panel does
@@ -70,11 +71,12 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 | SSH | `1` write key + change port | Appends the public key, changes the SSH port, opens the firewall; backs up to `/root/vps-init-backup`, validates with `sshd -t`, rolls back automatically on failure |
 | SSH | `2` port only / `3` disable password login / `4` rollback | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup |
 | Checks & tuning | `5` TCP quality / `6` NQ test / `7` TCP tuning | Runs TcpQuality, NodeQuality and tcpfit in turn, then applies the suggested kernel tuning |
-| Target selection | `8` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
-| Target selection | `9` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
-| Maintenance | `10` defaults / `11` update rc / `12` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel; read `/var/log/rc-manager.log` |
-| Danger | `13` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups and the asset-database backup stay. Before uninstalling tcpfit the panel asks whether to roll back the kernel tuning — the default is **no rollback** (choosing to keep the tuning keeps both tcpfit and iperf3) |
-| Danger | `14` uninstall a single module | Remove just one: scanning engine / tcpfit / iperf3 / rc config and log |
+| Checks & tuning | `8` sing-box panel (sb) | One-shot install of [singbox-lite](https://github.com/G1oow/singbox-lite): downloads `singbox.sh` to `/usr/local/bin/sb`, validates it and opens its own menu; when it is already installed the download is skipped and the menu opens directly. The sing-box / Xray cores are installed on demand from that menu |
+| Target selection | `9` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
+| Target selection | `10` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
+| Maintenance | `11` defaults / `12` update rc / `13` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel; read `/var/log/rc-manager.log` |
+| Danger | `14` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups, the asset-database backup and `/usr/local/bin/sb` stay (the sb menu uninstalls itself). Before uninstalling tcpfit the panel asks whether to roll back the kernel tuning — the default is **no rollback** (choosing to keep the tuning keeps both tcpfit and iperf3) |
+| Danger | `15` uninstall a single module | Remove just one: scanning engine / tcpfit / iperf3 / rc config and log |
 
 The panel changes system state: with `DRY_RUN=1` every action is printed instead of executed, which is the recommended way to try it first.
 
@@ -86,7 +88,7 @@ Debian / Ubuntu as root, one line and you land in the menu:
 curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-The script installs itself at `/usr/local/bin/rc`, creates the `/usr/local/bin/RC` symlink and opens the menu; use `| sudo bash` when you are not root, or `| bash -s -- install-self` to install without starting. The scanning engine needs no manual install: entry `8) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`).
+The script installs itself at `/usr/local/bin/rc`, creates the `/usr/local/bin/RC` symlink and opens the menu; use `| sudo bash` when you are not root, or `| bash -s -- install-self` to install without starting. The scanning engine needs no manual install: entry `9) REALITY target scan` downloads it into `RC_DIR` (default `/root/rc-new`). The sing-box panel needs no manual install either: entry `8) sing-box 面板(sb)` drops it at `/usr/local/bin/sb` and opens its menu.
 
 ## Subcommands
 
@@ -100,8 +102,9 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc tcpq` | TCP quality check (TcpQuality) |
 | `rc score` | NQ test (NodeQuality) |
 | `rc tune` | TCP tuning (tcpfit) |
+| `rc sb` | Install the sing-box panel (singbox-lite) and open its menu |
 | `rc reality` | REALITY camouflage target selection |
-| `rc status` | Show OS, SSH, ufw, TCP congestion control, engine and tcpfit status |
+| `rc status` | Show OS, SSH, ufw, TCP congestion control, engine, tcpfit and sb status |
 | `rc rollback` | Roll back the SSH configuration (`--yes` skips the prompt; restores `/etc/ssh` and the socket drop-in) |
 | `rc rollback-cancel` | Cancel a scheduled SSH auto-rollback |
 | `rc install-self` | Install or repair the panel at `/usr/local/bin/rc` |
@@ -110,7 +113,7 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | Uninstall one module only |
 | `rc help` | Show help |
 
-Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above (`5`, the old sb panel entry, is no longer wired). The `vps-init.sh` file at the repository root is only a compatibility shim that forwards to `rc.sh`.
+Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above (`5` is the same as `rc sb`). The `vps-init.sh` file at the repository root is only a compatibility shim that forwards to `rc.sh`.
 
 ## Panel and engine
 

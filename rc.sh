@@ -12,6 +12,7 @@
 #   rc tcpq         阶段 1：TCP 质量检测
 #   rc score        阶段 2：NQ 测试（NodeQuality）
 #   rc tune         阶段 3：TCP 调优（tcpfit）
+#   rc sb           体检 8：一键安装 sing-box 面板（singbox-lite）并进入其菜单
 #   rc reality      阶段 4：Reality 伪装目标筛选（每次询问 IPv4/IPv6/双栈）
 #
 #   rc status       查看各组件状态（含 TCP 拥塞控制算法）
@@ -22,7 +23,7 @@
 #   rc uninstall    卸载 rc + 已装引擎 + tcpfit（含 iperf3）；卸载 tcpfit 前先问是否回滚调优
 #   rc uninstall <engine|tcpfit|iperf3>   只卸载某个模块
 #
-# 兼容旧阶段参数：0 / 0b / 1 / 2 / 3 / 4 / 5 仍可用。
+# 兼容旧阶段参数：0 / 0b / 1 / 2 / 3 / 4 仍可用；5 等价 rc sb。
 #
 # 安全说明：改 SSH 前备份到 /root/vps-init-backup，改完用 sshd -t 校验，失败自动回滚。
 # 默认值持久化在 /etc/rc-manager/rc.conf（0600）；同名环境变量优先级更高。
@@ -51,6 +52,8 @@ SOCKET_DROPIN=/etc/systemd/system/ssh.socket.d/10-vps-init-port.conf
 SRC_TCPQUALITY='https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh'
 SRC_NQ='https://run.NodeQuality.com'
 SRC_TCPFIT='https://raw.githubusercontent.com/Kylin010/tcpfit/main/tcpfit.sh'
+SRC_SINGBOX_LITE='https://raw.githubusercontent.com/G1oow/singbox-lite/main/singbox.sh'
+SB_BIN='/usr/local/bin/sb'
 SRC_RC_INSTALL='https://raw.githubusercontent.com/G1oow/RC/main/install.sh'
 # 仓库文件地址给两种写法，兼容 RC.sh / rc.sh（raw 路径大小写敏感）
 SELF_URL_CANDIDATES=(
@@ -490,9 +493,10 @@ tool_state() { # $1 = 可执行路径
 status_brief() {
   printf '  系统: %s  |  SSH 端口: %s  |  密码登录: %s\n' "$(os_name)" "$(effective_ssh_port)" "$(ssh_password_auth)"
   printf '  公钥: %s 条  |  ufw: %s  |  拥塞控制: %s\n' "$(auth_key_count)" "$(ufw_state)" "$(tcp_cc_label)"
-  printf '  引擎: %s  |  tcpfit: %s' \
+  printf '  引擎: %s  |  tcpfit: %s  |  sb: %s' \
     "$(tool_state "${RC_DIR}/reality-checker-main")" \
-    "$(command -v tcpfit >/dev/null 2>&1 && printf '已安装' || printf '未安装')"
+    "$(command -v tcpfit >/dev/null 2>&1 && printf '已安装' || printf '未安装')" \
+    "$(command -v sb >/dev/null 2>&1 && printf '已安装' || printf '未安装')"
 }
 
 status_full() {
@@ -514,6 +518,7 @@ status_full() {
   printf '  出口 IP         : %s\n' "${ip:-探测失败}"
   printf '  引擎            : %s (%s)\n' "$(tool_state "${RC_DIR}/reality-checker-main")" "$RC_DIR"
   printf '  tcpfit          : %s\n' "$(tool_state "$(command -v tcpfit 2>/dev/null || printf /usr/local/bin/tcpfit)")"
+  printf '  sb              : %s (%s)\n' "$(tool_state "$(command -v sb 2>/dev/null || printf '%s' "$SB_BIN")")" "$SB_BIN"
   printf '  配置文件        : %s\n' "$( [[ -f $CONF_FILE ]] && printf '已存在' || printf '未创建')"
   printf '  备份目录        : %s（保留最近 %s 份）\n' "$BACKUP_ROOT" "$RC_BACKUP_KEEP"
   printf '  SSH 自动回滚    : %s\n' "$( [[ ${RC_SSH_AUTO_ROLLBACK_MIN:-0} -gt 0 ]] && printf '%s 分钟' "$RC_SSH_AUTO_ROLLBACK_MIN" || printf '未启用')"
@@ -834,6 +839,7 @@ uninstall() {
   - SSH 加固改动与备份目录 $BACKUP_ROOT（需要还原请先跑 rc rollback）
   - /root/rc-backup 下的资产库备份
   - tcpfit 调优存档 /var/lib/tcpfit（默认保留）
+  - sing-box 面板 /usr/local/bin/sb 及其 sing-box / Xray 配置（由 sb 菜单 [17] 卸载脚本自行清理，rc 不代为删除）
 
 EOF
   printf '    确认全部卸载？[y/N]: '
@@ -1307,6 +1313,52 @@ stage3() {
   log_record 'stage3'
 }
 
+# 体检与调优 8)：singbox-lite（sb）一键安装并进入其菜单
+stage_sb() {
+  step '体检 8 / sing-box 面板（singbox-lite / sb）'
+  local installed=0 sb_cmd tmp
+  if [[ -x $SB_BIN ]] || command -v sb >/dev/null 2>&1; then installed=1; fi
+  sb_cmd="$(command -v sb 2>/dev/null || printf '%s' "$SB_BIN")"
+
+  if [[ $installed == 1 ]]; then
+    ok "sb 已安装（${sb_cmd}），直接进入菜单"
+  else
+    warn "首次运行会下载 singbox.sh 到 $SB_BIN 并进入菜单；sing-box / Xray 核心在 sb 菜单里按需安装"
+  fi
+
+  if [[ $DRY_RUN == 1 ]]; then
+    [[ $installed == 1 ]] || printf '    [dry] curl -fsSL %s -o %s && chmod +x %s\n' "$SRC_SINGBOX_LITE" "$SB_BIN" "$SB_BIN"
+    printf '    [dry] sb\n'
+    log_record "sb dry installed=${installed}"
+    return 0
+  fi
+
+  if [[ $installed == 0 ]]; then
+    need_curl
+    tmp="$(mktemp)" || { warn '无法创建临时文件'; return 1; }
+    if ! fetch_to "$SRC_SINGBOX_LITE" "$tmp" || [[ ! -s $tmp ]]; then
+      rm -f "$tmp"
+      warn "下载失败：$SRC_SINGBOX_LITE"
+      return 1
+    fi
+    if ! verify_script "$tmp"; then
+      rm -f "$tmp"
+      warn '下载内容未通过校验（空 / 缺 shebang / 语法错误），已放弃安装'
+      return 1
+    fi
+    if ! install -m 0755 "$tmp" "$SB_BIN"; then
+      rm -f "$tmp"
+      warn "安装失败：$SB_BIN"
+      return 1
+    fi
+    rm -f "$tmp"
+    ok "已安装：$SB_BIN"
+  fi
+
+  "$sb_cmd" || warn 'sb 退出码非 0'
+  log_record "sb run installed=${installed}"
+}
+
 ensure_reality_checker() {
   if [[ -x ${RC_DIR}/reality-checker-main ]]; then ok "已安装：${RC_DIR}/reality-checker-main"; return 0; fi
   warn "未安装，先执行 install.sh 到 ${RC_DIR}"
@@ -1383,7 +1435,7 @@ stage4() {
 }
 
 # ---------------------------------------------------------------- 回滚
-
+# $1 可选：整目录备份（tar.gz）。给了就整体还原（含 drop-in），否则回滚单文件
 # 回滚后把面板记录的 SSH_PORT 与实际生效端口对齐：否则配置里残留被回滚掉的旧端口，
 # 下次 rc ssh 回车沿用就会把机器又改回那个端口（回滚不完整）
 sync_panel_ssh_port() {
@@ -1660,18 +1712,19 @@ BANNER
   printf '    3) 关闭密码登录         4) 回滚 SSH 配置\n\n'
   printf '\033[36m【体检与调优】\033[0m\n'
   printf '    5) TCP 质量检测         6) NQ 测试\n'
-  printf '    7) TCP 调优(tcpfit)\n\n'
+  printf '    7) TCP 调优(tcpfit)\n'
+  printf '    8) sing-box 面板(sb)\n\n'
   printf '\033[36m【目标筛选】\033[0m\n'
-  printf '    8) Reality 目标扫描     9) 重装扫描引擎\n\n'
+  printf '    9) Reality 目标扫描     10) 重装扫描引擎\n\n'
   printf '\033[36m【维护】\033[0m\n'
-  printf '   10) 默认设置            11) 更新 rc\n'
-  printf '   12) 查看执行日志\n\n'
+  printf '   11) 默认设置            12) 更新 rc\n'
+  printf '   13) 查看执行日志\n\n'
   printf '\033[36m【危险】\033[0m\n'
-  printf '   13) 卸载 rc（含引擎/tcpfit）\n'
-  printf '   14) 模块单独卸载\n\n'
+  printf '   14) 卸载 rc（含引擎/tcpfit）\n'
+  printf '   15) 模块单独卸载\n\n'
   printf '  ─────────────────────────────────────────\n'
   printf '    0) 退出\n\n'
-  printf '  请选择 [0-14]: '
+  printf '  请选择 [0-15]: '
 }
 
 act_port_only() {
@@ -1699,13 +1752,14 @@ menu_main() {
       5) stage1 || true ;;
       6) stage2 || true ;;
       7) stage3 || true ;;
-      8) stage4 || true ;;
-      9) step '重装扫描引擎'; ensure_reality_checker || true ;;
-      10) menu_settings ;;
-      11) update_self || true ;;
-      12) view_log ;;
-      13) uninstall || true ;;
-      14) menu_modules ;;
+      8) stage_sb || true ;;
+      9) stage4 || true ;;
+      10) step '重装扫描引擎'; ensure_reality_checker || true ;;
+      11) menu_settings ;;
+      12) update_self || true ;;
+      13) view_log ;;
+      14) uninstall || true ;;
+      15) menu_modules ;;
       0) exit 0 ;;
       *) warn "无效输入：$choice" ;;
     esac
@@ -1728,6 +1782,7 @@ rc —— RC：VPS 聚合运维面板
   tcpq         阶段 1：TCP 质量检测
   score        阶段 2：NQ 测试（NodeQuality）
   tune         阶段 3：TCP 调优（tcpfit）
+  sb           体检 8：一键安装 sing-box 面板（singbox-lite）并进入其菜单
   reality      阶段 4：Reality 伪装目标筛选（每次询问 IPv4/IPv6/双栈）
   status       查看各组件状态（含 TCP 拥塞控制算法）
   rollback     回滚 SSH 配置（--yes 跳过确认）
@@ -1740,7 +1795,7 @@ rc —— RC：VPS 聚合运维面板
                卸 tcpfit 前会问是否回滚内核调优，默认保留（保留时 tcpfit 不删）
   help         显示本帮助
 
-兼容旧参数: 0 / 0b / 1 / 2 / 3 / 4（5 原为 sb 面板，现已不再联动）
+兼容旧参数: 0 / 0b / 1 / 2 / 3 / 4（5 等价 rc sb）
 
 环境变量（优先于 /etc/rc-manager/rc.conf）:
   SSH_PORT=30000    SSH_PUBKEY_FILE=/root/k.pub
@@ -1773,6 +1828,7 @@ main() {
     2 | score) stage2 ;;
     3 | tune) stage3 ;;
     4 | reality) stage4 ;;
+    5 | sb) stage_sb ;;
     status) status_full ;;
     rollback) shift || true; rollback "$@" ;;
     rollback-cancel) cancel_auto_rollback ;;
