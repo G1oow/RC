@@ -32,7 +32,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
  |  _ <| |___
  |_| \_\____|  VPS 聚合面板
 
-  rc v1.3.1   (实机执行)
+  rc v1.4.0   (实机执行)
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
   公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
