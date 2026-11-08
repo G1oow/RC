@@ -17,13 +17,13 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" alt="MIT 许可"></a>
 </p>
 
-RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `rc` 进菜单：先把 SSH 收干净（公钥、端口、关闭密码登录，改错可以回滚），再体检与调优 TCP（TcpQuality / NodeQuality / tcpfit），最后在同一台机器上筛出适合做 REALITY 伪装的域名。所有阶段都在一个菜单里，不用再记一堆一次性脚本的 URL。
+RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `rc` 进菜单：先把 SSH 收干净（公钥、端口、关闭密码登录，改错可以回滚），再体检与调优 TCP（TcpQuality / NodeQuality / tcpfit）、顺手把 sing-box 面板（singbox-lite，命令名 `sb`）装起来，最后在同一台机器上筛出适合做 REALITY 伪装的域名。所有阶段都在一个菜单里，不用再记一堆一次性脚本的 URL。
 
 面板本身不含扫描逻辑：选目标这一步交给随附的扫描引擎。引擎由面板自动安装并调用，也可以独立以 CLI 或 systemd 守护进程运行。
 
 ## 面板长这样
 
-装好后输入 `rc`，看到的就是这一屏：横幅下面三行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、TCP 拥塞控制算法、引擎与 tcpfit 状态），再按四个分区列出 14 个入口。
+装好后输入 `rc`，看到的就是这一屏：横幅下面三行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、TCP 拥塞控制算法、引擎 / tcpfit / sb 状态），再按四个分区列出 15 个入口。
 
 ```text
   ____   ____
@@ -36,7 +36,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
   公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
-  引擎: 已安装  |  tcpfit: 已安装
+  引擎: 已安装  |  tcpfit: 已安装  |  sb: 已安装
 
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口
@@ -45,22 +45,23 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 【体检与调优】
     5) TCP 质量检测         6) NQ 测试
     7) TCP 调优(tcpfit)
+    8) sing-box 面板(sb)
 
 【目标筛选】
-    8) Reality 目标扫描     9) 重装扫描引擎
+    9) Reality 目标扫描     10) 重装扫描引擎
 
 【维护】
-   10) 默认设置            11) 更新 rc
-   12) 查看执行日志
+   11) 默认设置            12) 更新 rc
+   13) 查看执行日志
 
 【危险】
-   13) 卸载 rc（含引擎/tcpfit）
-   14) 模块单独卸载
+   14) 卸载 rc（含引擎/tcpfit）
+   15) 模块单独卸载
 
   ─────────────────────────────────────────
     0) 退出
 
-  请选择 [0-14]:
+  请选择 [0-15]:
 ```
 
 ## 面板能力
@@ -70,11 +71,12 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 | SSH 加固 | `1` 写入公钥 + 改端口 | 追加公钥、改 SSH 端口、放行防火墙；改前备份到 `/root/vps-init-backup`，改后 `sshd -t` 校验，失败自动回滚 |
 | SSH 加固 | `2` 只改端口 / `3` 关闭密码登录 / `4` 回滚 | 分步收紧；关闭密码登录会先确认新端口可登录；回滚可还原到任一份备份 |
 | 体检与调优 | `5` TCP 质量检测 / `6` NQ 测试 / `7` TCP 调优 | 依次拉起 TcpQuality、NodeQuality、tcpfit，测完再按面板提示调整内核参数 |
-| 目标筛选 | `8` Reality 目标扫描 | 每次都重新询问扫描 IPv4 / IPv6 / 双栈（不记忆上次选择），再调用引擎按 ASN 网段扫描；同 ASN 找不到合适目标时自动回退同地区（同国家）继续找 |
-| 目标筛选 | `9` 重装扫描引擎 | 引擎缺失或损坏时按需重装到 `RC_DIR` |
-| 维护 | `10` 默认设置 / `11` 更新 rc / `12` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限、备份保留份数、SSH 自动回滚；自更新面板；查看 `/var/log/rc-manager.log` |
-| 危险 | `13` 卸载 rc | 删除 `rc`、`RC` 软链接、引擎目录、tcpfit（含 iperf3）、`/etc/rc-manager` 与日志；保留 SSH 改动、备份目录与资产库备份。tcpfit 卸载前会问是否回滚内核调优，默认**不回滚**（选择保留调优时 tcpfit 与 iperf3 都不动） |
-| 危险 | `14` 模块单独卸载 | 只卸某一个模块：扫描引擎 / tcpfit / iperf3 / rc 配置与日志 |
+| 体检与调优 | `8` sing-box 面板（sb） | 一键安装 [singbox-lite](https://github.com/G1oow/singbox-lite)：下载 `singbox.sh` 到 `/usr/local/bin/sb`、校验后直接进入它的菜单；已装过则跳过下载直接进菜单。sing-box / Xray 核心由 `sb` 菜单按需安装 |
+| 目标筛选 | `9` Reality 目标扫描 | 每次都重新询问扫描 IPv4 / IPv6 / 双栈（不记忆上次选择），再调用引擎按 ASN 网段扫描；同 ASN 找不到合适目标时自动回退同地区（同国家）继续找 |
+| 目标筛选 | `10` 重装扫描引擎 | 引擎缺失或损坏时按需重装到 `RC_DIR` |
+| 维护 | `11` 默认设置 / `12` 更新 rc / `13` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限、备份保留份数、SSH 自动回滚；自更新面板；查看 `/var/log/rc-manager.log` |
+| 危险 | `14` 卸载 rc | 删除 `rc`、`RC` 软链接、引擎目录、tcpfit（含 iperf3）、`/etc/rc-manager` 与日志；保留 SSH 改动、备份目录、资产库备份与 `/usr/local/bin/sb`（由 `sb` 菜单的卸载项自行清理）。tcpfit 卸载前会问是否回滚内核调优，默认**不回滚**（选择保留调优时 tcpfit 与 iperf3 都不动） |
+| 危险 | `15` 模块单独卸载 | 只卸某一个模块：扫描引擎 / tcpfit / iperf3 / rc 配置与日志 |
 
 面板对系统是有副作用的：`DRY_RUN=1` 下所有改动只打印不执行，第一次使用建议先试跑一遍。
 
@@ -86,7 +88,7 @@ Debian / Ubuntu，root 权限，一行装完直接进面板：
 curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 ```
 
-脚本会把自己装到 `/usr/local/bin/rc`，创建 `/usr/local/bin/RC` 软链接，然后直接打开菜单；非 root 用 `| sudo bash`，只想安装不启动用 `| bash -s -- install-self`。扫描引擎不需要手动装：执行 `8) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。
+脚本会把自己装到 `/usr/local/bin/rc`，创建 `/usr/local/bin/RC` 软链接，然后直接打开菜单；非 root 用 `| sudo bash`，只想安装不启动用 `| bash -s -- install-self`。扫描引擎不需要手动装：执行 `9) Reality 目标扫描` 时面板会把它下载到 `RC_DIR`（默认 `/root/rc-new`）。sing-box 面板同样不用手动装：执行 `8) sing-box 面板(sb)` 会把它装到 `/usr/local/bin/sb` 并直接进菜单。
 
 ## 子命令
 
@@ -100,8 +102,9 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc tcpq` | TCP 质量检测（TcpQuality） |
 | `rc score` | NQ 测试（NodeQuality） |
 | `rc tune` | TCP 调优（tcpfit） |
+| `rc sb` | 一键安装 sing-box 面板（singbox-lite）并进入其菜单 |
 | `rc reality` | REALITY 伪装目标筛选 |
-| `rc status` | 查看系统、SSH、ufw、TCP 拥塞控制算法、引擎与 tcpfit 状态 |
+| `rc status` | 查看系统、SSH、ufw、TCP 拥塞控制算法、引擎、tcpfit 与 sb 状态 |
 | `rc rollback` | 回滚 SSH 配置（`--yes` 跳过确认；默认同时还原 `/etc/ssh` 与 socket drop-in） |
 | `rc rollback-cancel` | 取消排定的 SSH 自动回滚 |
 | `rc install-self` | 把面板安装/修复到 `/usr/local/bin/rc` |
@@ -110,7 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | 只卸载指定模块 |
 | `rc help` | 显示帮助 |
 
-旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 原为 sb 面板，现已不再联动）。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
+旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 等价 `rc sb`）。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
 
 ## 面板与引擎
 
