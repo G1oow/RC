@@ -1030,7 +1030,11 @@ verify_new_port() { # PORT
   ok "端口 $port 已在监听"
 
   if command -v ssh-keyscan >/dev/null 2>&1; then
-    if ssh-keyscan -T 5 -p "$port" 127.0.0.1 2>/dev/null | grep -q '^ssh-'; then
+    # 带 -p 时 ssh-keyscan 的主机字段是 [host]:port，密钥类型在行内，用 '^ssh-' 永远匹配不到。
+    # 先取输出再判断，避免 grep -q 提前退出触发 SIGPIPE、在 pipefail 下被误判为失败。
+    local scan_out=''
+    scan_out="$(ssh-keyscan -T 5 -p "$port" 127.0.0.1 2>/dev/null || true)"
+    if grep -qE '^[^#].*[[:space:]]ssh-[a-z0-9]' <<<"$scan_out"; then
       ok "端口 $port 上 sshd 正常应答（已取到主机钥）"
       return 0
     fi
@@ -1380,6 +1384,18 @@ stage4() {
 
 # ---------------------------------------------------------------- 回滚
 
+# 回滚后把面板记录的 SSH_PORT 与实际生效端口对齐：否则配置里残留被回滚掉的旧端口，
+# 下次 rc ssh 回车沿用就会把机器又改回那个端口（回滚不完整）
+sync_panel_ssh_port() {
+  local eff=''
+  eff="$(effective_ssh_port 2>/dev/null || true)"
+  [[ -n $eff ]] || return 0
+  [[ $eff == "$SSH_PORT" ]] && return 0
+  SSH_PORT="$eff"
+  conf_set SSH_PORT "$eff"
+  ok "面板记录的 SSH 端口已同步为 $eff"
+}
+
 # $1 可选：整目录备份（tar.gz）。给了就整体还原（含 drop-in），否则回滚单文件
 rollback_sshd() {
   local latest=${1:-}
@@ -1400,6 +1416,7 @@ rollback_sshd() {
   fi
   if sshd_validate; then
     reload_sshd
+    sync_panel_ssh_port
     ok '已重载'
   else
     warn '恢复后的配置仍未通过 sshd -t，请手工检查'
@@ -1419,6 +1436,7 @@ rollback_socket() {
     systemctl daemon-reload || warn 'daemon-reload 失败'
     if systemctl restart ssh.socket; then
       ok 'socket drop-in 已回滚'
+      sync_panel_ssh_port
     else
       warn 'ssh.socket 重启失败（端口可能被占用），当前会话先别断开，用旧端口重试'
       return 1
@@ -1427,6 +1445,7 @@ rollback_socket() {
     warn '当前系统没有 systemd，ssh.socket drop-in 已清理但仍需手动重启 sshd'
     reload_sshd || return 1
     ok 'socket drop-in 已回滚（走 init 脚本重载）'
+    sync_panel_ssh_port
   fi
 }
 
@@ -1687,6 +1706,7 @@ menu_main() {
       12) view_log ;;
       13) uninstall || true ;;
       14) menu_modules ;;
+      0) exit 0 ;;
       *) warn "无效输入：$choice" ;;
     esac
     [[ $choice == 0 ]] || pause_back
