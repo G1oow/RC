@@ -75,7 +75,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 | Checks & tuning | `8` sing-box panel (sb) | One-shot install of [singbox-lite](https://github.com/G1oow/singbox-lite): downloads `singbox.sh` to `/usr/local/bin/sb`, validates it and opens its own menu; when it is already installed the download is skipped and the menu opens directly. The sing-box / Xray cores are installed on demand from that menu |
 | Target selection | `9` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
 | Target selection | `10` reinstall engine | Reinstalls the engine into `RC_DIR` when it is missing or broken |
-| Maintenance | `11` defaults / `12` update rc / `13` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel; read `/var/log/rc-manager.log` |
+| Maintenance | `11` defaults / `12` update rc / `13` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel and reload straight into the new version (no bounce back to the old menu); read `/var/log/rc-manager.log` |
 | Danger | `14` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups, the asset-database backup and `/usr/local/bin/sb` stay (the sb menu uninstalls itself). Before uninstalling tcpfit the panel asks whether to roll back the kernel tuning — the default is **no rollback** (choosing to keep the tuning keeps both tcpfit and iperf3) |
 | Danger | `15` uninstall a single module | Remove just one: scanning engine / tcpfit / iperf3 / rc config and log |
 
@@ -110,7 +110,7 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc rollback` | Roll back the SSH configuration (`--yes` skips the prompt; restores `/etc/ssh` and the socket drop-in) |
 | `rc rollback-cancel` | Cancel a scheduled SSH auto-rollback |
 | `rc install-self` | Install or repair the panel at `/usr/local/bin/rc` |
-| `rc update` | Update the panel itself |
+| `rc update` | Update the panel itself (non-interactive; re-run `rc` afterwards to enter the new version) |
 | `rc uninstall` | Uninstall the panel plus the installed engine, tcpfit and iperf3 |
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | Uninstall one module only |
 | `rc help` | Show help |
