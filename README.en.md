@@ -23,7 +23,7 @@ The panel holds no scanning logic itself: picking targets is delegated to the bu
 
 ## What the menu looks like
 
-Running `rc` drops you on this screen: a banner, three status lines (OS, SSH port, password login, key count, ufw, TCP congestion control, engine / tcpfit / sb state), then the 15 entries grouped into four sections. The menu itself is Chinese-only; every entry also has a non-interactive subcommand.
+Running `rc` drops you on this screen: a banner, three status lines (OS, SSH port, password login, key count, ufw, TCP congestion control, engine / tcpfit / sb state), then the 16 entries grouped into five sections. The menu itself is Chinese-only; every entry also has a non-interactive subcommand.
 
 ```text
   ____   ____
@@ -41,6 +41,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口
     3) 关闭密码登录         4) 回滚 SSH 配置
+   16) 查看当前 SSH 端口
 
 【体检与调优】
     5) TCP 质量检测         6) NQ 测试
@@ -61,15 +62,15 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
   ─────────────────────────────────────────
     0) 退出
 
-  请选择 [0-15]:
+  请选择 [0-16]:
 ```
 
 ## What the panel does
 
 | Section | Entry | Behaviour |
 |---|---|---|
-| SSH | `1` write key + change port | Appends the public key, changes the SSH port, opens the firewall; backs up to `/root/vps-init-backup`, validates with `sshd -t`, rolls back automatically on failure |
-| SSH | `2` port only / `3` disable password login / `4` rollback | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup |
+| SSH | `1` write key + change port | Appends the public key, changes the SSH port, opens the firewall; after a successful switch only the new port remains and the old one (including the default 22) stops listening; backs up to `/root/vps-init-backup`, validates with `sshd -t` and rechecks listeners, rolls back automatically on failure |
+| SSH | `2` port only / `3` disable password login / `4` rollback / `16` port switch | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup; `16` lists configured SSH ports with their listen state, can re-enable a closed port or close one of them, and refuses to close the only SSH port. Old ufw rules are not removed automatically |
 | Checks & tuning | `5` TCP quality / `6` NQ test / `7` TCP tuning | Runs TcpQuality, NodeQuality and tcpfit in turn, then applies the suggested kernel tuning |
 | Checks & tuning | `8` sing-box panel (sb) | One-shot install of [singbox-lite](https://github.com/G1oow/singbox-lite): downloads `singbox.sh` to `/usr/local/bin/sb`, validates it and opens its own menu; when it is already installed the download is skipped and the menu opens directly. The sing-box / Xray cores are installed on demand from that menu |
 | Target selection | `9` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
@@ -99,12 +100,13 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc` | Open the interactive menu (default) |
 | `rc ssh` | Write public key, change SSH port, open firewall |
 | `rc ssh-close` | Disable password login after confirming the new port |
+| `rc ssh-ports` | List SSH ports and interactively open or close one; the only SSH port cannot be closed |
 | `rc tcpq` | TCP quality check (TcpQuality) |
 | `rc score` | NQ test (NodeQuality) |
 | `rc tune` | TCP tuning (tcpfit) |
 | `rc sb` | Install the sing-box panel (singbox-lite) and open its menu |
 | `rc reality` | REALITY camouflage target selection |
-| `rc status` | Show OS, SSH, ufw, TCP congestion control, engine, tcpfit and sb status |
+| `rc status` | Show OS, SSH ports, ufw, TCP congestion control, engine, tcpfit and sb status |
 | `rc rollback` | Roll back the SSH configuration (`--yes` skips the prompt; restores `/etc/ssh` and the socket drop-in) |
 | `rc rollback-cancel` | Cancel a scheduled SSH auto-rollback |
 | `rc install-self` | Install or repair the panel at `/usr/local/bin/rc` |
@@ -113,7 +115,7 @@ Every menu action has a non-interactive subcommand for scripting:
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | Uninstall one module only |
 | `rc help` | Show help |
 
-Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above (`5` is the same as `rc sb`). The `vps-init.sh` file at the repository root is only a compatibility shim that forwards to `rc.sh`.
+Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the subcommands above (`5` is the same as `rc sb`). `rc ssh` and `rc ssh-ports` snapshot `/etc/ssh` (plus the socket drop-in in socket mode) before changing ports, and restore that snapshot when validation, reload or the post-change listener check fails. The `vps-init.sh` file at the repository root is only a compatibility shim that forwards to `rc.sh`.
 
 ## Panel and engine
 

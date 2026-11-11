@@ -23,7 +23,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 
 ## 面板长这样
 
-装好后输入 `rc`，看到的就是这一屏：横幅下面三行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、TCP 拥塞控制算法、引擎 / tcpfit / sb 状态），再按四个分区列出 15 个入口。
+装好后输入 `rc`，看到的就是这一屏：横幅下面三行环境摘要（系统、SSH 端口、密码登录、公钥条数、ufw、TCP 拥塞控制算法、引擎 / tcpfit / sb 状态），再按五个分区列出 16 个入口。
 
 ```text
   ____   ____
@@ -41,6 +41,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口
     3) 关闭密码登录         4) 回滚 SSH 配置
+   16) 查看当前 SSH 端口
 
 【体检与调优】
     5) TCP 质量检测         6) NQ 测试
@@ -61,15 +62,15 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
   ─────────────────────────────────────────
     0) 退出
 
-  请选择 [0-15]:
+  请选择 [0-16]:
 ```
 
 ## 面板能力
 
 | 分区 | 入口 | 做什么 |
 |---|---|---|
-| SSH 加固 | `1` 写入公钥 + 改端口 | 追加公钥、改 SSH 端口、放行防火墙；改前备份到 `/root/vps-init-backup`，改后 `sshd -t` 校验，失败自动回滚 |
-| SSH 加固 | `2` 只改端口 / `3` 关闭密码登录 / `4` 回滚 | 分步收紧；关闭密码登录会先确认新端口可登录；回滚可还原到任一份备份 |
+| SSH 加固 | `1` 写入公钥 + 改端口 | 追加公钥、改 SSH 端口、放行防火墙；切换成功后只保留新端口，旧端口（含默认 22）停止监听；改前备份到 `/root/vps-init-backup`，改后 `sshd -t` 校验并复核监听，失败自动回滚 |
+| SSH 加固 | `2` 只改端口 / `3` 关闭密码登录 / `4` 回滚 / `16` 端口开关 | 分步收紧；关闭密码登录会先确认新端口可登录；回滚可还原到任一份备份；`16` 列出配置中的 SSH 端口与监听状态，可开启已关闭端口或关闭其中一个，唯一 SSH 端口禁止关闭。旧 ufw 规则不会自动删除 |
 | 体检与调优 | `5` TCP 质量检测 / `6` NQ 测试 / `7` TCP 调优 | 依次拉起 TcpQuality、NodeQuality、tcpfit，测完再按面板提示调整内核参数 |
 | 体检与调优 | `8` sing-box 面板（sb） | 一键安装 [singbox-lite](https://github.com/G1oow/singbox-lite)：下载 `singbox.sh` 到 `/usr/local/bin/sb`、校验后直接进入它的菜单；已装过则跳过下载直接进菜单。sing-box / Xray 核心由 `sb` 菜单按需安装 |
 | 目标筛选 | `9` Reality 目标扫描 | 每次都重新询问扫描 IPv4 / IPv6 / 双栈（不记忆上次选择），再调用引擎按 ASN 网段扫描；同 ASN 找不到合适目标时自动回退同地区（同国家）继续找 |
@@ -99,12 +100,13 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc` | 进入交互菜单（默认行为） |
 | `rc ssh` | 写入公钥 + 改 SSH 端口 + 放行防火墙 |
 | `rc ssh-close` | 确认新端口可登录后关闭密码登录 |
+| `rc ssh-ports` | 查看 SSH 端口并交互开启/关闭；唯一 SSH 端口禁止关闭 |
 | `rc tcpq` | TCP 质量检测（TcpQuality） |
 | `rc score` | NQ 测试（NodeQuality） |
 | `rc tune` | TCP 调优（tcpfit） |
 | `rc sb` | 一键安装 sing-box 面板（singbox-lite）并进入其菜单 |
 | `rc reality` | REALITY 伪装目标筛选 |
-| `rc status` | 查看系统、SSH、ufw、TCP 拥塞控制算法、引擎、tcpfit 与 sb 状态 |
+| `rc status` | 查看系统、SSH 端口、ufw、TCP 拥塞控制算法、引擎、tcpfit 与 sb 状态 |
 | `rc rollback` | 回滚 SSH 配置（`--yes` 跳过确认；默认同时还原 `/etc/ssh` 与 socket drop-in） |
 | `rc rollback-cancel` | 取消排定的 SSH 自动回滚 |
 | `rc install-self` | 把面板安装/修复到 `/usr/local/bin/rc` |
@@ -113,7 +115,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | 只卸载指定模块 |
 | `rc help` | 显示帮助 |
 
-旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 等价 `rc sb`）。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
+旧参数 `0` / `0b` / `1` / `2` / `3` / `4` 仍然可用，等同于对应子命令（`5` 等价 `rc sb`）。`rc ssh` 和 `rc ssh-ports` 修改端口前会备份 `/etc/ssh`（socket 模式另存 drop-in），校验失败、重载失败或端口复核不一致都会恢复本次快照。仓库根目录的 `vps-init.sh` 只是转发到 `rc.sh` 的兼容壳，不含逻辑。
 
 ## 面板与引擎
 
