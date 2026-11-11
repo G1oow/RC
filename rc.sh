@@ -472,7 +472,10 @@ auth_key_count() {
 
 ufw_state() {
   command -v ufw >/dev/null 2>&1 || { printf '未安装'; return 0; }
-  if ufw status 2>/dev/null | grep -qi '^Status: active'; then printf '已启用'; else printf '未启用'; fi
+  # 不能写成 `ufw status | grep -q`：pipefail 下 grep 提前退出会让管道误判为失败
+  local st
+  st="$(ufw status 2>/dev/null | head -n 1 || true)"
+  if [[ $st == Status:\ active* ]]; then printf '已启用'; else printf '未启用'; fi
 }
 
 ssh_socket_state() {
@@ -490,8 +493,12 @@ tool_state() { # $1 = 可执行路径
   [[ -x $1 ]] && printf '已安装' || printf '未安装'
 }
 
+ssh_port_summary() {
+  if ssh_ports_load; then printf '%s' "${SSH_PORTS[*]}"; else effective_ssh_port; fi
+}
+
 status_brief() {
-  printf '  系统: %s  |  SSH 端口: %s  |  密码登录: %s\n' "$(os_name)" "$(effective_ssh_port)" "$(ssh_password_auth)"
+  printf '  系统: %s  |  SSH 端口: %s  |  密码登录: %s\n' "$(os_name)" "$(ssh_port_summary)" "$(ssh_password_auth)"
   printf '  公钥: %s 条  |  ufw: %s  |  拥塞控制: %s\n' "$(auth_key_count)" "$(ufw_state)" "$(tcp_cc_label)"
   printf '  引擎: %s  |  tcpfit: %s  |  sb: %s' \
     "$(tool_state "${RC_DIR}/reality-checker-main")" \
@@ -509,7 +516,7 @@ status_full() {
   printf '  内核            : %s\n' "$(uname -r 2>/dev/null || printf '未知')"
   printf '  init 系统       : %s\n' "$(init_system)"
   printf '  ssh.socket      : %s\n' "$(ssh_socket_state)"
-  printf '  SSH 生效端口    : %s\n' "$(effective_ssh_port)"
+  printf '  SSH 生效端口    : %s\n' "$(ssh_port_summary)"
   printf '  密码登录        : %s\n' "$(ssh_password_auth)"
   [[ -n $SSHD_PROBE_ERR ]] && printf '  sshd -T 失败    : %s\n' "$SSHD_PROBE_ERR"
   printf '  公钥条数        : %s\n' "$(auth_key_count)"
@@ -920,14 +927,346 @@ prompt_port() {
   local current="${SSH_PORT}" port
   printf '    新 SSH 端口 [1-65535]（当前 %s，回车沿用）: ' "$current"
   port="$(read_ans "$current")"
-  [[ $port =~ ^[0-9]+$ ]] && ((port >= 1 && port <= 65535)) || { warn "端口无效：$port"; return 1; }
+  valid_ssh_port "$port" || { warn "端口无效：$port"; return 1; }
   SSH_PORT="$port"
-  if [[ $port != "$current" ]]; then conf_set SSH_PORT "$port"; fi
-  return 0
 }
 
 # ---------------------------------------------------------------- SSH 实现
+# 只在明确的 SSH 配置来源中列出端口，不能把任意 TCP 监听当成 SSH。
+valid_ssh_port() { [[ $1 =~ ^[1-9][0-9]{0,4}$ ]] && ((10#$1 <= 65535)); }
 
+SSH_PORTS=()
+SSH_PORTS_SOURCE=''
+SSH_PORT_HISTORY=()
+ssh_ports_history() {
+  local file port
+  SSH_PORT_HISTORY=()
+  file="${BACKUP_ROOT}/ssh-closed-ports"
+  [[ -f $file ]] || return 0
+  while IFS= read -r port; do
+    valid_ssh_port "$port" && SSH_PORT_HISTORY+=("$port")
+  done <"$file"
+}
+ssh_ports_remember() {
+  local port=$1 file="${BACKUP_ROOT}/ssh-closed-ports" existing
+  [[ $DRY_RUN == 1 ]] && { printf '    [dry] 记录已关闭端口 %s\n' "$port"; return 0; }
+  ssh_ports_history
+  for existing in "${SSH_PORT_HISTORY[@]}"; do [[ $existing == "$port" ]] && return 0; done
+  run mkdir -p "$BACKUP_ROOT"
+  printf '%s\n' "$port" >>"$file"
+  run chmod 600 "$file"
+}
+ssh_ports_forget() {
+  local port=$1 file="${BACKUP_ROOT}/ssh-closed-ports" existing tmp
+  [[ $DRY_RUN == 1 || ! -f $file ]] && return 0
+  tmp="${file}.tmp"
+  : >"$tmp"
+  ssh_ports_history
+  for existing in "${SSH_PORT_HISTORY[@]}"; do [[ $existing == "$port" ]] || printf '%s\n' "$existing" >>"$tmp"; done
+  run mv "$tmp" "$file"
+}
+ssh_ports_load() {
+  local line port raw
+  SSH_PORTS=()
+  SSH_PORTS_SOURCE=''
+  if ssh_socket_active; then
+    SSH_PORTS_SOURCE=socket
+    # systemctl show 是已合并 unit/drop-in 的生效配置；不从 sshd -T 猜测 socket 端口。
+    raw="$(systemctl show ssh.socket -p Listen --value 2>/dev/null)" || return 1
+    # systemctl show 可能把多个地址写在同一行，以「(Stream)」逐项拆解。
+    while [[ $raw == *'(Stream)'* ]]; do
+      line="${raw%%\(Stream\)*}"
+      line="${line%[[:space:]]}"
+      port="${line##*[[:space:]]}"
+      port="${port##*:}"
+      if valid_ssh_port "$port"; then ssh_ports_add "$port"; fi
+      raw="${raw#*\(Stream\)}"
+    done
+  else
+    SSH_PORTS_SOURCE=sshd
+    sshd_load || return 1
+    while IFS= read -r line; do
+      [[ ${line,,} == port\ * ]] || continue
+      port="${line#* }"
+      if valid_ssh_port "$port"; then ssh_ports_add "$port"; fi
+    done <<<"$SSHD_DUMP"
+  fi
+  ((${#SSH_PORTS[@]} > 0))
+}
+
+ssh_ports_add() {
+  local existing
+  for existing in "${SSH_PORTS[@]}"; do [[ $existing == "$1" ]] && return 0; done
+  SSH_PORTS+=("$1")
+}
+
+# 该端口是否由 sshd（或 socket 激活的 systemd）在监听。
+# 刻意不用 ssh-keyscan：OpenSSH 9.8+ 的 PerSourcePenalties 会把未认证连接
+# 当成攻击并临时封禁来源，探测几次后反而会把活端口判死。
+ssh_port_responds() {
+  local port=$1 out line
+  if command -v ss >/dev/null 2>&1; then
+    out="$(ss -Hlntp 2>/dev/null || ss -lntp 2>/dev/null || true)"
+  elif command -v netstat >/dev/null 2>&1; then
+    out="$(netstat -lntp 2>/dev/null || true)"
+  else
+    return 2
+  fi
+  [[ -n $out ]] || return 2
+  line="$(grep -E "[:.]${port}[[:space:]]" <<<"$out" || true)"
+  [[ -n $line ]] || return 1
+  # 有进程信息时要求属主是 sshd/systemd；没有进程信息（非 root、busybox）则只认监听
+  if [[ $line == *'users:('* || $line == */[a-z]* ]]; then
+    [[ $line == *'"sshd"'* || $line == *'"systemd"'* || $line == */sshd* || $line == */systemd* ]]
+    return
+  fi
+  return 0
+}
+
+# 实际运行的 ssh.socket 监听项，用于重启后的复核。
+ssh_socket_listening() {
+  local raw line port
+  raw="$(systemctl list-sockets --all --no-legend --no-pager ssh.socket 2>/dev/null)" || return 1
+  while IFS= read -r line; do
+    [[ $line == *ssh.socket* ]] || continue
+    port="${line%%[[:space:]]*}"
+    port="${port##*:}"
+    if valid_ssh_port "$port"; then printf '%s\n' "$port"; fi
+  done <<<"$raw"
+}
+
+ssh_port_present() {
+  local p
+  for p in "${SSH_PORTS[@]}"; do [[ $p == "$1" ]] && return 0; done
+  return 1
+}
+
+ssh_port_live() {
+  local p
+  if [[ $SSH_PORTS_SOURCE == socket ]]; then
+    p="$(ssh_socket_listening)" || return 1
+    grep -qxF "$1" <<<"$p" || return 1
+    port_is_listening "$1"
+  else
+    ssh_port_responds "$1"
+  fi
+}
+
+ssh_ports_print() {
+  local i port state
+  ssh_ports_load || { warn '无法可靠读取 SSH 端口列表，本次禁止修改'; return 1; }
+  printf '    当前 SSH 端口（%s）：\n' "$SSH_PORTS_SOURCE"
+  for i in "${!SSH_PORTS[@]}"; do
+    port=${SSH_PORTS[i]}
+    state='未确认监听'
+    ssh_port_live "$port" && state='正在监听'
+    printf '    %s) %s  %s\n' "$((i + 1))" "$port" "$state"
+  done
+  ssh_ports_history
+  for port in "${SSH_PORT_HISTORY[@]}"; do
+    ssh_port_present "$port" && continue
+    printf '    %s) %s  已关闭（可开启）\n' "$(( ${#SSH_PORTS[@]} + 1 ))" "$port"
+    SSH_PORTS+=("$port")
+  done
+}
+
+# 主配置前置 Port 指令，OpenSSH 多 Port 可重复；Include/drop-in 内的旧 Port
+# 必须在全局范围内去掉，否则新端口之外仍可能继续监听。
+ssh_strip_ports() {
+  local file=$1 line keyword in_match=0 tmp
+  tmp="${file}.rc-new"
+  : >"$tmp" || return 1
+  while IFS= read -r line || [[ -n $line ]]; do
+    keyword="${line#"${line%%[![:space:]]*}"}"
+    keyword="${keyword%%[[:space:]]*}"
+    [[ ${keyword,,} == match ]] && in_match=1
+    if (( ! in_match )) && [[ ${keyword,,} == port ]] && [[ ! $line =~ ^[[:space:]]*# ]]; then
+      continue
+    fi
+    printf '%s\n' "$line" >>"$tmp"
+  done <"$file"
+  run chmod --reference="$file" "$tmp"
+  run chown --reference="$file" "$tmp"
+  run mv "$tmp" "$file"
+}
+
+ssh_port_files() {
+  local file inc pattern included
+  local -a queue=("$SSHD_CONFIG")
+  local -A seen=()
+  while ((${#queue[@]})); do
+    file=${queue[0]}
+    queue=("${queue[@]:1}")
+    [[ -f $file && -z ${seen[$file]:-} ]] || continue
+    seen[$file]=1
+    printf '%s\n' "$file"
+    while IFS= read -r inc; do
+      for pattern in $inc; do
+        # sshd 对相对 Include 以 /etc/ssh 为基准，不能按当前工作目录展开。
+        [[ $pattern == /* ]] || pattern="${SSHD_CONFIG%/*}/$pattern"
+        while IFS= read -r included; do
+          [[ -n $included ]] && queue+=("$included")
+        done < <(compgen -G "$pattern" || true)
+      done
+    done < <(awk '/^[[:space:]]*[Mm][Aa][Tt][Cc][Hh][[:space:]]/{exit} /^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee][[:space:]]/{ $1=""; sub(/^[[:space:]]+/,""); print }' "$file")
+  done
+}
+ssh_ports_writable() {
+  local file
+  [[ -f $SSHD_CONFIG ]] || return 1
+  while IFS= read -r file; do
+    case $file in
+      "${SSHD_CONFIG%/*}/"*) ;;
+      *) warn "Include 文件不在 /etc/ssh 快照范围内：$file，拒绝修改"; return 1 ;;
+    esac
+  done < <(ssh_port_files)
+}
+
+ssh_ports_write() {
+  local file port
+  if [[ $SSH_PORTS_SOURCE == socket ]]; then
+    run install -d -m 755 "${SOCKET_DROPIN%/*}"
+    if [[ $DRY_RUN == 1 ]]; then
+      printf '    [dry] 写入 %s：%s\n' "$SOCKET_DROPIN" "${SSH_PORTS[*]}"
+    else
+      { printf '[Socket]\nListenStream=\n'; for port in "${SSH_PORTS[@]}"; do printf 'ListenStream=%s\n' "$port"; done; } >"$SOCKET_DROPIN"
+    fi
+    run systemctl daemon-reload
+  else
+    while IFS= read -r file; do
+      if [[ $DRY_RUN == 1 ]]; then
+        printf '    [dry] 清理 %s 的全局 Port 行\n' "$file"
+      else
+        ssh_strip_ports "$file" || return 1
+      fi
+    done < <(ssh_port_files)
+    if [[ $DRY_RUN == 1 ]]; then
+      printf '    [dry] 写入 %s：%s\n' "$SSHD_CONFIG" "${SSH_PORTS[*]}"
+    else
+      file="${SSHD_CONFIG}.rc-new"
+      { for port in "${SSH_PORTS[@]}"; do printf 'Port %s\n' "$port"; done; cat "$SSHD_CONFIG"; } >"$file"
+      run chmod --reference="$SSHD_CONFIG" "$file"
+      run chown --reference="$SSHD_CONFIG" "$file"
+      run mv "$file" "$SSHD_CONFIG"
+    fi
+  fi
+}
+
+ssh_port_snapshot() {
+  local stamp
+  stamp="$(date +%Y%m%d-%H%M%S)-$$"
+  run mkdir -p "$BACKUP_ROOT"
+  run chmod 700 "$BACKUP_ROOT"
+  if [[ $SSH_PORTS_SOURCE == socket ]]; then
+    SSH_PORT_SNAPSHOT="${BACKUP_ROOT}/socket-port.${stamp}"
+    if [[ -f $SOCKET_DROPIN ]]; then
+      run cp -a "$SOCKET_DROPIN" "$SSH_PORT_SNAPSHOT"
+    else
+      SSH_PORT_SNAPSHOT="${BACKUP_ROOT}/socket-port.${stamp}.absent"
+      run touch "$SSH_PORT_SNAPSHOT"
+    fi
+  else
+    SSH_PORT_SNAPSHOT="${BACKUP_ROOT}/etc-ssh.${stamp}.tar.gz"
+    run tar -czf "$SSH_PORT_SNAPSHOT" -C "${SSHD_CONFIG%/*}/.." ssh
+  fi
+}
+ssh_port_restore() {
+  if [[ $SSH_PORTS_SOURCE == socket ]]; then
+    if [[ $SSH_PORT_SNAPSHOT == *.absent ]]; then run rm -f "$SOCKET_DROPIN" || return 1
+    else run cp -a "$SSH_PORT_SNAPSHOT" "$SOCKET_DROPIN" || return 1; fi
+    run systemctl daemon-reload || return 1
+  else
+    run tar -xzf "$SSH_PORT_SNAPSHOT" -C "${SSHD_CONFIG%/*}/.." || return 1
+  fi
+  reload_sshd
+}
+ssh_ports_commit() { # SSH_PORTS 是目标；参数为需停止监听的旧端口（可选）
+  local port removed=${1:-} expected_source=$SSH_PORTS_SOURCE snapshot
+  local -a expected=("${SSH_PORTS[@]}") removed_ports=($removed)
+  if [[ $SSH_PORTS_SOURCE == sshd ]] && ! ssh_ports_writable; then return 1; fi
+  ssh_port_snapshot || return 1
+  snapshot=$SSH_PORT_SNAPSHOT
+  if ! ssh_ports_write || { [[ $DRY_RUN != 1 ]] && ! sshd_validate; } ||
+      { [[ $DRY_RUN != 1 && $SSH_PORTS_SOURCE == socket ]] && ! systemd-analyze verify ssh.socket >/dev/null 2>&1; } ||
+      ! reload_sshd; then
+    warn 'SSH 配置或重载失败，正在恢复本次备份'
+    ssh_port_restore || warn '自动恢复失败，请保持当前会话并手动检查'
+    return 1
+  fi
+  [[ $DRY_RUN == 1 ]] && return 0
+  if ! ssh_ports_load || [[ $SSH_PORTS_SOURCE != "$expected_source" || ${#SSH_PORTS[@]} -ne ${#expected[@]} ]]; then
+    warn '生效端口与目标不符，正在恢复本次备份'
+    SSH_PORTS_SOURCE=$expected_source SSH_PORT_SNAPSHOT=$snapshot ssh_port_restore || warn '自动恢复失败，请保持当前会话并手动检查'
+    return 1
+  fi
+  for port in "${expected[@]}"; do
+    if ! ssh_port_present "$port" || ! ssh_port_live "$port"; then
+      warn "SSH 端口 $port 未确认监听，正在恢复本次备份"
+      SSH_PORTS_SOURCE=$expected_source SSH_PORT_SNAPSHOT=$snapshot ssh_port_restore || warn '自动恢复失败，请保持当前会话并手动检查'
+      return 1
+    fi
+  done
+  for port in "${removed_ports[@]}"; do
+    if ssh_port_present "$port" || ssh_port_live "$port"; then
+      warn "旧端口 $port 仍在监听，正在恢复本次备份"
+      SSH_PORTS_SOURCE=$expected_source SSH_PORT_SNAPSHOT=$snapshot ssh_port_restore || warn '自动恢复失败，请保持当前会话并手动检查'
+      return 1
+    fi
+  done
+  SSH_PORT_SNAPSHOT=$snapshot
+  SSH_PORTS=("${expected[@]}")
+  SSH_PORTS_SOURCE=$expected_source
+}
+
+ssh_ports_manage() {
+  local choice port other count=0
+  local -a remaining=()
+  need_root
+  ssh_ports_print || return 1
+  active_count=${#SSH_PORTS[@]}
+  printf '    选择端口序号（回车返回）: '
+  choice="$(read_ans '')"
+  [[ -n $choice ]] || return 0
+  [[ $choice =~ ^[1-9][0-9]*$ ]] && ((choice <= ${#SSH_PORTS[@]})) || { warn '序号无效'; return 0; }
+  port=${SSH_PORTS[choice - 1]}
+  # 列表项可以来自已关闭历史；先重读当前配置，再决定执行哪种操作。
+  ssh_ports_load || { warn '端口列表已变化，请重新选择'; return 0; }
+  if ssh_port_present "$port"; then
+    printf '    关闭端口 %s？[y/N]: ' "$port"
+    case "$(read_ans n)" in y | Y | yes | YES) ;; *) return 0 ;; esac
+    ((${#SSH_PORTS[@]} > 1)) || { warn '禁止关闭唯一 SSH 端口'; return 0; }
+    for other in "${SSH_PORTS[@]}"; do
+      [[ $other == "$port" ]] && continue
+      if ssh_port_live "$other"; then ((count+=1)); fi
+    done
+    ((count > 0)) || { warn '其他端口未确认可用，拒绝关闭'; return 0; }
+    printf '    确认关闭 %s？请保持当前会话，并先从外部验证其他端口。[y/N]: ' "$port"
+    case "$(read_ans n)" in y | Y | yes | YES) ;; *) return 0 ;; esac
+    for other in "${SSH_PORTS[@]}"; do [[ $other == "$port" ]] || remaining+=("$other"); done
+    SSH_PORTS=("${remaining[@]}")
+    ssh_ports_commit "$port" || return 1
+    if [[ $DRY_RUN != 1 ]]; then
+      SSH_PORT=${SSH_PORTS[0]}
+      conf_set SSH_PORT "$SSH_PORT"
+      ssh_ports_remember "$port"
+    fi
+    ok "端口 $port 已关闭（旧 ufw 规则未删除）"
+  else
+    ssh_ports_history
+    local found=0
+    for other in "${SSH_PORT_HISTORY[@]}"; do [[ $other == "$port" ]] && found=1; done
+    ((found)) || { warn '端口列表已变化，请重新选择'; return 0; }
+    printf '    确认开启端口 %s？[y/N]: ' "$port"
+    case "$(read_ans n)" in y | Y | yes | YES) ;; *) return 0 ;; esac
+    SSH_PORTS+=("$port")
+    local selected=$SSH_PORT
+    SSH_PORT=$port
+    if ! open_firewall || ! ssh_ports_commit; then SSH_PORT=$selected; return 1; fi
+    SSH_PORT=$selected
+    if [[ $DRY_RUN != 1 ]]; then ssh_ports_forget "$port"; fi
+    ok "端口 $port 已开启"
+  fi
+}
 backup_file() {
   local f=$1
   [[ -e $f ]] || return 0
@@ -967,13 +1306,12 @@ reload_sshd() {
 
   if [[ $init == systemd ]] && command -v systemctl >/dev/null 2>&1; then
     if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
-      # 先停 service，否则 restart 会因「already active」被拒
-      run systemctl stop ssh.service || true
-      run systemctl restart ssh.socket
+      # socket 场景只需重启 socket；stop ssh.service 会连带终止当前 SSH 会话。
+      run systemctl restart ssh.socket || return 1
     elif [[ -f /lib/systemd/system/ssh.service || -f /usr/lib/systemd/system/ssh.service || -f /etc/init.d/ssh ]]; then
-      run systemctl reload ssh
+      run systemctl reload ssh || return 1
     else
-      run systemctl reload sshd
+      run systemctl reload sshd || return 1
     fi
     return 0
   fi
@@ -1018,7 +1356,7 @@ port_is_listening() { # PORT
     out="$(netstat -lnt 2>/dev/null || true)"
   fi
   [[ -n $out ]] || return 2
-  printf '%s\n' "$out" | grep -qE "[:.]${port}[[:space:]]"
+  grep -qE "[:.]${port}[[:space:]]" <<<"$out"
 }
 
 # 关闭密码登录前的机器校验：端口在监听 + sshd 真能应答（能取到主机钥）
@@ -1035,19 +1373,12 @@ verify_new_port() { # PORT
   fi
   ok "端口 $port 已在监听"
 
-  if command -v ssh-keyscan >/dev/null 2>&1; then
-    # 带 -p 时 ssh-keyscan 的主机字段是 [host]:port，密钥类型在行内，用 '^ssh-' 永远匹配不到。
-    # 先取输出再判断，避免 grep -q 提前退出触发 SIGPIPE、在 pipefail 下被误判为失败。
-    local scan_out=''
-    scan_out="$(ssh-keyscan -T 5 -p "$port" 127.0.0.1 2>/dev/null || true)"
-    if grep -qE '^[^#].*[[:space:]]ssh-[a-z0-9]' <<<"$scan_out"; then
-      ok "端口 $port 上 sshd 正常应答（已取到主机钥）"
-      return 0
-    fi
-    warn "端口 $port 在监听，但 ssh-keyscan 未取到主机钥（sshd 可能没真正加载新配置）"
-    return 1
+  if ssh_port_responds "$port"; then
+    ok "端口 $port 上由 sshd 监听"
+    return 0
   fi
-  return 0
+  warn "端口 $port 在监听，但监听进程不是 sshd（sshd 可能没真正加载新配置）"
+  return 1
 }
 
 write_pubkey() {
@@ -1074,44 +1405,27 @@ write_pubkey() {
 }
 
 apply_ssh_port() {
-  # 端口：优先处理 Ubuntu 的 socket activation，否则改 sshd_config
-  if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
-    warn '检测到 ssh.socket（socket 激活），端口必须写在 socket drop-in 里，改 sshd_config 无效'
-    run install -d -m 755 /etc/systemd/system/ssh.socket.d
-    backup_file "$SOCKET_DROPIN"
-    if [[ $DRY_RUN == 1 ]]; then
-      printf '    [dry] 写入 %s，ListenStream=%s\n' "$SOCKET_DROPIN" "$SSH_PORT"
-    else
-      printf '[Socket]\nListenStream=\nListenStream=%s\n' "$SSH_PORT" >"$SOCKET_DROPIN"
-    fi
-    # drop-in 变更后 socket 必须重启才能生效；此时由它拉起的 ssh.service 仍 active，
-    # systemd 会以「Socket service ssh.service already active, refusing」拒绝，故先停服务
-    run systemctl stop ssh.service || true
-    run systemctl daemon-reload
-    return 0
+  local port removed=()
+  valid_ssh_port "$SSH_PORT" || { warn "端口无效：$SSH_PORT"; return 1; }
+  ssh_ports_load || { warn '无法读取原 SSH 端口，拒绝改动'; return 1; }
+  for port in "${SSH_PORTS[@]}"; do
+    [[ $port == "$SSH_PORT" ]] || removed+=("$port")
+  done
+  SSH_PORTS=("$SSH_PORT")
+  open_firewall || return 1
+  ssh_ports_commit "${removed[*]}" || return 1
+  if [[ $DRY_RUN != 1 ]]; then
+    conf_set SSH_PORT "$SSH_PORT"
+    for port in "${removed[@]}"; do ssh_ports_remember "$port"; done
   fi
-
-  backup_file "$SSHD_CONFIG"
-  if grep -qE "^[[:space:]]*Port[[:space:]]+${SSH_PORT}\b" "$SSHD_CONFIG" 2>/dev/null; then
-    ok "sshd_config 已是 $SSH_PORT，跳过"
-    return 0
-  fi
-  if [[ $DRY_RUN == 1 ]]; then
-    printf '    [dry] 删除旧 Port 行并把 %s 设为 Port %s\n' "$SSHD_CONFIG" "$SSH_PORT"
-    return 0
-  fi
-  sed -i -E '/^[[:space:]]*#?[[:space:]]*Port[[:space:]]+[0-9]+/d' "$SSHD_CONFIG"
-  {
-    printf 'Port %s\n' "$SSH_PORT"
-    cat "$SSHD_CONFIG"
-  } >"$SSHD_CONFIG.new"
-  mv "$SSHD_CONFIG.new" "$SSHD_CONFIG"
-  ok "sshd_config 端口已设为 $SSH_PORT"
+  ok "SSH 现仅监听端口 $SSH_PORT（旧 ufw 规则未删除）"
 }
 
 open_firewall() {
   # 只动已启用的 ufw，避免凭空引入规则
-  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+  local st
+  st="$(ufw status 2>/dev/null | head -n 1 || true)"
+  if command -v ufw >/dev/null 2>&1 && [[ $st == Status:\ active* ]]; then
     run ufw allow "${SSH_PORT}/tcp"
     ok "ufw 已放行 ${SSH_PORT}/tcp"
   else
@@ -1156,19 +1470,8 @@ stage0() {
   # 已有端口时先问一句，回车沿用；这样才能交互改端口
   prompt_port || return 1
   write_pubkey
-  apply_ssh_port
-  open_firewall
-  verify_and_reload
-
-  if [[ $DRY_RUN != 1 ]]; then
-    if verify_new_port "$SSH_PORT"; then
-      ok "端口 $SSH_PORT 已在监听并应答"
-    else
-      warn "端口 $SSH_PORT 暂未确认可用：ss -lntp | grep $SSH_PORT，必要时 rc rollback"
-    fi
-    schedule_auto_rollback
-  fi
-
+  apply_ssh_port || return 1
+  if [[ $DRY_RUN != 1 ]]; then schedule_auto_rollback; fi
   cat <<EOF
 
     下一步（保持当前会话不要断开）：
@@ -1440,7 +1743,7 @@ stage4() {
 # 下次 rc ssh 回车沿用就会把机器又改回那个端口（回滚不完整）
 sync_panel_ssh_port() {
   local eff=''
-  eff="$(effective_ssh_port 2>/dev/null || true)"
+  if ssh_ports_load; then eff=${SSH_PORTS[0]}; fi
   [[ -n $eff ]] || return 0
   [[ $eff == "$SSH_PORT" ]] && return 0
   SSH_PORT="$eff"
@@ -1478,12 +1781,12 @@ rollback_sshd() {
 
 rollback_socket() {
   local latest
-  latest="$(ls -1t "${BACKUP_ROOT}"/10-vps-init-port.conf.* 2>/dev/null | head -n1 || true)"
+  latest="$(ls -1t "${BACKUP_ROOT}"/socket-port.* "${BACKUP_ROOT}"/10-vps-init-port.conf.* 2>/dev/null | head -n1 || true)"
   if [[ $DRY_RUN == 1 ]]; then
     printf '    [dry] 恢复 %s（备份: %s）\n' "$SOCKET_DROPIN" "${latest:-无，将删除}"
     return 0
   fi
-  if [[ -n $latest ]]; then cp -a "$latest" "$SOCKET_DROPIN"; else rm -f "$SOCKET_DROPIN"; fi
+  if [[ $latest == *.absent || -z $latest ]]; then run rm -f "$SOCKET_DROPIN"; else run cp -a "$latest" "$SOCKET_DROPIN"; fi
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || warn 'daemon-reload 失败'
     if systemctl restart ssh.socket; then
@@ -1505,12 +1808,14 @@ rollback_socket() {
 
 # 排定「N 分钟后自动回滚 SSH 配置」的安全网（RC_SSH_AUTO_ROLLBACK_MIN，默认 0 = 关闭）
 schedule_auto_rollback() {
-  local mins="${RC_SSH_AUTO_ROLLBACK_MIN:-0}"
+  local mins="${RC_SSH_AUTO_ROLLBACK_MIN:-0}" unit
   [[ $mins =~ ^[0-9]+$ ]] || mins=0
   ((mins > 0)) || return 0
 
   if command -v systemd-run >/dev/null 2>&1; then
-    run systemd-run --on-active="${mins}min" --unit=rc-ssh-rollback "$SELF" rollback --yes ||
+    # 每次用唯一单元名：同名瞬态单元仍存在时复用会直接失败
+    unit="rc-ssh-rollback-$(date +%s%N)"
+    run systemd-run --on-active="${mins}min" --unit="$unit" "$SELF" rollback --yes ||
       { warn '排定自动回滚失败（systemd-run）'; return 0; }
   elif command -v at >/dev/null 2>&1; then
     printf '%s rollback --yes\n' "$SELF" | at now + "$mins" minutes 2>/dev/null ||
@@ -1523,17 +1828,24 @@ schedule_auto_rollback() {
 }
 
 cancel_auto_rollback() {
-  local cancelled=1
+  local cancelled=1 unit self_inv="${INVOCATION_ID:-}"
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-timers --all 2>/dev/null | grep -q 'rc-ssh-rollback'; then
-      run systemctl stop rc-ssh-rollback.timer 2>/dev/null || true
+    # 覆盖历史遗留的 rc-ssh-rollback.timer 与新的带时间戳单元
+    while IFS= read -r unit; do
+      [[ -n $unit ]] || continue
+      # 自动回滚服务自己也会走到这里：别把正在执行的自己停掉
+      if [[ -n $self_inv && $unit == *.service ]] &&
+          [[ "$(systemctl show -p InvocationID --value "$unit" 2>/dev/null)" == "$self_inv" ]]; then
+        continue
+      fi
+      run systemctl stop "$unit" 2>/dev/null || true
       cancelled=0
-    fi
+    done < <(systemctl list-units --all --plain --no-legend 'rc-ssh-rollback*' 2>/dev/null | awk '{print $1}' | grep -E '\.(timer|service)$' || true)
   fi
   if ((cancelled == 1)) && command -v atq >/dev/null 2>&1; then
     local job
     while IFS= read -r job; do
-      printf '%s\n' "$job" | grep -q 'rc rollback' && { run atrm "${job%%[[:space:]]*}" 2>/dev/null || true; cancelled=0; }
+      grep -q 'rc rollback' <<<"$job" && { run atrm "${job%%[[:space:]]*}" 2>/dev/null || true; cancelled=0; }
     done <<<"$(atq 2>/dev/null || true)"
   fi
   ((cancelled == 0)) && ok '已取消排定的自动回滚'
@@ -1576,8 +1888,8 @@ rollback() {
     warn '未找到 /etc/ssh 整目录快照：只还原了主配置，drop-in 里的加固改动需要手动处理'
   fi
 
-  # 2) socket 激活的端口 drop-in 在 /etc/ssh 之外，存在就一并还原
-  if [[ -e $SOCKET_DROPIN || -n "$(ls -1t "${BACKUP_ROOT}"/10-vps-init-port.conf.* 2>/dev/null | head -n1 || true)" ]]; then
+  # 2) socket 激活的端口 drop-in 在 /etc/ssh 之外；新快照与旧备份都一并识别。
+  if [[ -e $SOCKET_DROPIN || -n "$(ls -1t "${BACKUP_ROOT}"/socket-port.* "${BACKUP_ROOT}"/10-vps-init-port.conf.* 2>/dev/null | head -n1 || true)" ]]; then
     rollback_socket || rc=1
   fi
 
@@ -1709,7 +2021,8 @@ BANNER
 
   printf '\033[36m【SSH 加固】\033[0m\n'
   printf '    1) 写入公钥+改端口      2) 只改端口\n'
-  printf '    3) 关闭密码登录         4) 回滚 SSH 配置\n\n'
+  printf '    3) 关闭密码登录         4) 回滚 SSH 配置\n'
+  printf '   16) 查看当前 SSH 端口\n\n'
   printf '\033[36m【体检与调优】\033[0m\n'
   printf '    5) TCP 质量检测         6) NQ 测试\n'
   printf '    7) TCP 调优(tcpfit)\n'
@@ -1724,17 +2037,13 @@ BANNER
   printf '   15) 模块单独卸载\n\n'
   printf '  ─────────────────────────────────────────\n'
   printf '    0) 退出\n\n'
-  printf '  请选择 [0-15]: '
+  printf '  请选择 [0-16]: '
 }
 
 act_port_only() {
-  note_port_and_apply() {
-    apply_ssh_port
-    open_firewall
-    verify_and_reload
-  }
-  prompt_port || return 0
-  note_port_and_apply
+  prompt_port || return 1
+  apply_ssh_port || return 1
+  if [[ $DRY_RUN != 1 ]]; then schedule_auto_rollback; fi
   log_record "port=${SSH_PORT}"
 }
 
@@ -1760,6 +2069,7 @@ menu_main() {
       13) view_log ;;
       14) uninstall || true ;;
       15) menu_modules ;;
+      16) ssh_ports_manage || true ;;
       0) exit 0 ;;
       *) warn "无效输入：$choice" ;;
     esac
@@ -1779,6 +2089,7 @@ rc —— RC：VPS 聚合运维面板
 子命令:
   ssh          阶段 0：写入公钥 + 改 SSH 端口 + 放行防火墙
   ssh-close    阶段 0b：确认新端口可用后关闭密码登录
+  ssh-ports    查看 SSH 端口并交互开启/关闭（唯一端口不可关闭）
   tcpq         阶段 1：TCP 质量检测
   score        阶段 2：NQ 测试（NodeQuality）
   tune         阶段 3：TCP 调优（tcpfit）
@@ -1798,7 +2109,7 @@ rc —— RC：VPS 聚合运维面板
 兼容旧参数: 0 / 0b / 1 / 2 / 3 / 4（5 等价 rc sb）
 
 环境变量（优先于 /etc/rc-manager/rc.conf）:
-  SSH_PORT=30000    SSH_PUBKEY_FILE=/root/k.pub
+  SSH_PORT=30000（目标端口）  SSH_PUBKEY_FILE=/root/k.pub
   RC_DIR=/root/rc-new  SCAN_LIMIT=10  DRY_RUN=1
   RC_BACKUP_KEEP=10（备份保留份数）  RC_SSH_AUTO_ROLLBACK_MIN=0（改 SSH 后 N 分钟自动回滚）
 
@@ -1824,6 +2135,7 @@ main() {
     menu) self_install || warn '自安装失败，本次以内联方式运行（rc 命令可能不可用）'; menu_main ;;
     0 | ssh) self_install || warn '自安装失败，继续用内联方式执行'; stage0 ;;
     0b | ssh-close) stage0b ;;
+    ssh-ports) ssh_ports_manage ;;
     1 | tcpq) stage1 ;;
     2 | score) stage2 ;;
     3 | tune) stage3 ;;
