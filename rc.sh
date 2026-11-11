@@ -602,7 +602,23 @@ self_install() {
   fi
 }
 
-update_self() {
+# 更新后必须换进程：当前 shell 内存里还是旧脚本，回到菜单等于重开旧面板
+reload_self() {
+  if [[ $DRY_RUN == 1 ]]; then
+    printf '    [dry] exec %s\n' "$SELF"
+    return 0
+  fi
+  if [[ ! -x $SELF ]]; then
+    warn "无法自动重载面板：$SELF 不可执行，请手动重新输入 rc"
+    return 1
+  fi
+  printf '    重载面板，载入新版本...\n'
+  exec "$SELF"
+}
+
+update_self() { # [--restart]：--restart 表示更新成功后 exec 新脚本
+  local restart=0
+  if [[ ${1:-} == --restart ]]; then restart=1; fi
   need_root
   need_curl
   [[ -x $SELF ]] || self_install
@@ -638,7 +654,12 @@ update_self() {
   mv -f "$tmp" "$SELF" || { rm -f "$tmp"; die "写入失败：$SELF"; }
   ensure_alias
   log_record "update ${RC_VERSION} -> ${remote_version}"
-  ok "已更新到 ${remote_version}，重新输入 rc 生效（旧版本留在 ${backup}）"
+  ok "已更新到 ${remote_version}（旧版本留在 ${backup}）"
+  if [[ $restart == 1 ]]; then
+    reload_self
+  else
+    printf '    重新输入 rc 进入新版本\n'
+  fi
 }
 
 # ---------------------------------------------------------------- 模块卸载
@@ -2065,7 +2086,7 @@ menu_main() {
       9) stage4 || true ;;
       10) step '重装扫描引擎'; ensure_reality_checker || true ;;
       11) menu_settings ;;
-      12) update_self || true ;;
+      12) update_self --restart || true ;; # 更新成功后 exec 新脚本，避免回到旧面板
       13) view_log ;;
       14) uninstall || true ;;
       15) menu_modules ;;

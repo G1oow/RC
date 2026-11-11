@@ -75,7 +75,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
 | 体检与调优 | `8` sing-box 面板（sb） | 一键安装 [singbox-lite](https://github.com/G1oow/singbox-lite)：下载 `singbox.sh` 到 `/usr/local/bin/sb`、校验后直接进入它的菜单；已装过则跳过下载直接进菜单。sing-box / Xray 核心由 `sb` 菜单按需安装 |
 | 目标筛选 | `9` Reality 目标扫描 | 每次都重新询问扫描 IPv4 / IPv6 / 双栈（不记忆上次选择），再调用引擎按 ASN 网段扫描；同 ASN 找不到合适目标时自动回退同地区（同国家）继续找 |
 | 目标筛选 | `10` 重装扫描引擎 | 引擎缺失或损坏时按需重装到 `RC_DIR` |
-| 维护 | `11` 默认设置 / `12` 更新 rc / `13` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限、备份保留份数、SSH 自动回滚；自更新面板；查看 `/var/log/rc-manager.log` |
+| 维护 | `11` 默认设置 / `12` 更新 rc / `13` 查看执行日志 | 改 SSH 端口、公钥、扫描目录与条数上限、备份保留份数、SSH 自动回滚；自更新面板，更新完直接载入新版本（不再回到旧面板）；查看 `/var/log/rc-manager.log` |
 | 危险 | `14` 卸载 rc | 删除 `rc`、`RC` 软链接、引擎目录、tcpfit（含 iperf3）、`/etc/rc-manager` 与日志；保留 SSH 改动、备份目录、资产库备份与 `/usr/local/bin/sb`（由 `sb` 菜单的卸载项自行清理）。tcpfit 卸载前会问是否回滚内核调优，默认**不回滚**（选择保留调优时 tcpfit 与 iperf3 都不动） |
 | 危险 | `15` 模块单独卸载 | 只卸某一个模块：扫描引擎 / tcpfit / iperf3 / rc 配置与日志 |
 
@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `rc rollback` | 回滚 SSH 配置（`--yes` 跳过确认；默认同时还原 `/etc/ssh` 与 socket drop-in） |
 | `rc rollback-cancel` | 取消排定的 SSH 自动回滚 |
 | `rc install-self` | 把面板安装/修复到 `/usr/local/bin/rc` |
-| `rc update` | 更新面板自身 |
+| `rc update` | 更新面板自身（非交互更新，更新后重新输入 `rc` 进入新版本） |
 | `rc uninstall` | 卸载面板 + 已装引擎 + tcpfit + iperf3 |
 | `rc uninstall engine\|tcpfit\|iperf3\|conf` | 只卸载指定模块 |
 | `rc help` | 显示帮助 |
