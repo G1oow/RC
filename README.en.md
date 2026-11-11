@@ -41,7 +41,6 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 【SSH 加固】
     1) 写入公钥+改端口      2) 只改端口
     3) 关闭密码登录         4) 回滚 SSH 配置
-   16) 查看当前 SSH 端口
 
 【体检与调优】
     5) TCP 质量检测         6) NQ 测试
@@ -58,6 +57,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 【危险】
    14) 卸载 rc（含引擎/tcpfit）
    15) 模块单独卸载
+   16) 查看当前 SSH 端口
 
   ─────────────────────────────────────────
     0) 退出
@@ -70,7 +70,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 | Section | Entry | Behaviour |
 |---|---|---|
 | SSH | `1` write key + change port | Appends the public key, changes the SSH port, opens the firewall; after a successful switch only the new port remains and the old one (including the default 22) stops listening; backs up to `/root/vps-init-backup`, validates with `sshd -t` and rechecks listeners, rolls back automatically on failure |
-| SSH | `2` port only / `3` disable password login / `4` rollback / `16` port switch | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup; `16` lists configured SSH ports with their listen state, can re-enable a closed port or close one of them, and refuses to close the only SSH port. Old ufw rules are not removed automatically |
+| SSH | `2` port only / `3` disable password login / `4` rollback | Tighten step by step; disabling password login first confirms the new port works; rollback restores any backup. Old ufw rules are not removed automatically |
 | Checks & tuning | `5` TCP quality / `6` NQ test / `7` TCP tuning | Runs TcpQuality, NodeQuality and tcpfit in turn, then applies the suggested kernel tuning |
 | Checks & tuning | `8` sing-box panel (sb) | One-shot install of [singbox-lite](https://github.com/G1oow/singbox-lite): downloads `singbox.sh` to `/usr/local/bin/sb`, validates it and opens its own menu; when it is already installed the download is skipped and the menu opens directly. The sing-box / Xray cores are installed on demand from that menu |
 | Target selection | `9` REALITY target scan | Asks every run which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused), drives the engine across the ASN's prefixes, and falls back to other ASNs in the same country when the same ASN yields too few targets |
@@ -78,6 +78,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
 | Maintenance | `11` defaults / `12` update rc / `13` view log | Edit SSH port, key, scan directory, scan limit, backup retention and SSH auto-rollback; self-update the panel and reload straight into the new version (no bounce back to the old menu); read `/var/log/rc-manager.log` |
 | Danger | `14` uninstall rc | Removes `rc`, the `RC` symlink, the engine directory, tcpfit (including iperf3), `/etc/rc-manager` and the log; SSH changes, backups, the asset-database backup and `/usr/local/bin/sb` stay (the sb menu uninstalls itself). Before uninstalling tcpfit the panel asks whether to roll back the kernel tuning — the default is **no rollback** (choosing to keep the tuning keeps both tcpfit and iperf3) |
 | Danger | `15` uninstall a single module | Remove just one: scanning engine / tcpfit / iperf3 / rc config and log |
+| Danger | `16` port switch | Lists the configured SSH ports with their listen state, can re-enable a closed port or close one of them, and refuses to close the only SSH port |
 
 The panel changes system state: with `DRY_RUN=1` every action is printed instead of executed, which is the recommended way to try it first.
 
