@@ -37,7 +37,7 @@ umask 077
 
 trap 'printf "\n\033[31mfail\033[0m 第 %s 行执行失败\n" "$LINENO" >&2' ERR
 
-RC_VERSION='1.5.0'
+RC_VERSION='1.5.2'
 
 CONF_DIR='/etc/rc-manager'
 CONF_FILE="${CONF_DIR}/rc.conf"
@@ -2042,8 +2042,7 @@ BANNER
 
   printf '\033[36m【SSH 加固】\033[0m\n'
   printf '    1) 写入公钥+改端口      2) 只改端口\n'
-  printf '    3) 关闭密码登录         4) 回滚 SSH 配置\n'
-  printf '   16) 查看当前 SSH 端口\n\n'
+  printf '    3) 关闭密码登录         4) 回滚 SSH 配置\n\n'
   printf '\033[36m【体检与调优】\033[0m\n'
   printf '    5) TCP 质量检测         6) NQ 测试\n'
   printf '    7) TCP 调优(tcpfit)\n'
@@ -2055,7 +2054,8 @@ BANNER
   printf '   13) 查看执行日志\n\n'
   printf '\033[36m【危险】\033[0m\n'
   printf '   14) 卸载 rc（含引擎/tcpfit）\n'
-  printf '   15) 模块单独卸载\n\n'
+  printf '   15) 模块单独卸载\n'
+  printf '   16) 查看当前 SSH 端口\n\n'
   printf '  ─────────────────────────────────────────\n'
   printf '    0) 退出\n\n'
   printf '  请选择 [0-16]: '
