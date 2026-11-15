@@ -9,7 +9,7 @@
 - **RC 不是 RealityChecker 的缩写**。不要用 `RealityChecker` 当项目全称，也不要用 `reality-checker-main` 当示例命令——它是发布产物别名，只出现在脚本与 CI 内部。
 - 面板之外的扫描能力统一叫**「扫描引擎」**（代码与资产里的 `reality-checker` / `reasni` 是历史命名，属于功能路径，不要为了统一措辞去改它）。
 - 内置 HTTP API 与 Web 控制台已下线，不要恢复。
-- **引擎统一取上游**：面板（`rc reality` / `10) 重装扫描引擎`）与根目录 `install.sh` / `install.ps1` 都指向 `G1oow/reality-checker-main`，二进制、`config.yaml`、`data/` 均从上游取；本仓库的 `src/` 与 CI 产物不再作为引擎安装来源，不要改回自有地址。
+- **引擎统一取上游**：面板（`rc reality` / `10) 重装扫描引擎`）与根目录 `install.sh` 都指向 `G1oow/reality-checker-main`，二进制、`config.yaml`、`data/` 均从上游取；本仓库的 `src/` 与 CI 产物不再作为引擎安装来源，不要改回自有地址。上游只发 Linux 产物，Windows 端脚本已经随上游下线，不要恢复。
 
 ## 仓库结构
 
@@ -17,7 +17,7 @@
 |---|---|
 | `rc.sh` | 面板本体。安装为 `/usr/local/bin/rc` 并建 `/usr/local/bin/RC` 软链；配置在 `/etc/rc-manager/rc.conf`（0600），日志 `/var/log/rc-manager.log`，备份 `/root/vps-init-backup` |
 | `vps-init.sh` | 兼容壳，只转发到 `rc.sh`，不放逻辑 |
-| `install.sh` / `install.ps1` | 引擎安装脚本（Linux / Windows），从上游 `G1oow/reality-checker-main` 的 Release 取主程序，装到 `/root/rc-new` 或 `%USERPROFILE%\reality-checker` |
+| `install.sh` | 引擎安装脚本（仅 Linux），从上游 `G1oow/reality-checker-main` 的 Release 取主程序，装到 `/root/rc-new` |
 | `config.yaml`、`data/` | 引擎配置与内置资产（规则库、GeoIP） |
 | `src/` | Go 扫描引擎：`internal/cmd` 子命令、`internal/core` 扫描与守护调度、`internal/detectors` 协议与伪装判定、`internal/storage` SQLite/PostgreSQL、`src/deploy/systemd` 服务单元 |
 | `src/doc/` | VitePress 文档站（`pnpm docs:dev`） |
@@ -43,6 +43,7 @@ go test ./...
   - 所有写操作走 `run()`，`DRY_RUN=1` 时只打印不执行；新增系统改动必须保留这个分支。
   - 改 SSH 前必须备份，改完 `sshd -t` 校验，失败自动回滚；不要绕过 `need_root`。
   - 面向用户的文案用中文，路径、命令、标识符保持英文。
+  - 调上游 `install.sh` 装引擎必须带 `RC_NO_PANEL=1`，否则上游在交互终端里会直接进它的 TUI 面板；它还会顺带把 `rcm` 装到 `/usr/local/bin`，卸载引擎时一并清理。
 - **守护进程兼容层**：`daemon` 的 `--port/--host/--token/--no-http` 是让旧 `/etc/default/reasni` 不因未知 flag 崩掉的空操作，不要删。
 
 ## 提交与 PR
