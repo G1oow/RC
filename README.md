@@ -19,7 +19,7 @@
 
 RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `rc` 进菜单：先把 SSH 收干净（公钥、端口、关闭密码登录，改错可以回滚），再体检与调优 TCP（TcpQuality / NodeQuality / tcpfit）、顺手把 sing-box 面板（singbox-lite，命令名 `sb`）装起来，最后在同一台机器上筛出适合做 REALITY 伪装的域名。所有阶段都在一个菜单里，不用再记一堆一次性脚本的 URL。
 
-面板本身不含扫描逻辑：选目标这一步交给随附的扫描引擎。引擎由面板自动安装并调用，也可以独立以 CLI 或 systemd 守护进程运行。
+面板本身不含扫描逻辑：选目标这一步交给上游扫描引擎 [reality-checker-main](https://github.com/G1oow/reality-checker-main)。引擎由面板自动安装并调用，也可以独立以 CLI 或 systemd 守护进程运行。
 
 ## 面板长这样
 
@@ -32,7 +32,7 @@ RC 是一台新 VPS 从开荒到可用的统一入口。装好面板后输入 `r
  |  _ <| |___
  |_| \_\____|  VPS 聚合面板
 
-  rc v1.5.2   (实机执行)
+  rc v1.6.0   (实机执行)
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
   公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
@@ -137,7 +137,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `migrate [--from ...] [--to ...]` | 在 SQLite 与 PostgreSQL 之间迁移资产库 |
 | `version` | 输出版本、提交与构建时间 |
 
-引擎的安装脚本 `install.sh` 把它装进 `/root/rc-new`，同时带上 `config.yaml` 与 `data/` 数据文件；判定结果写入 `data/reality_targets.db`。
+引擎的安装脚本 `install.sh` 取自上游仓库，把它装进 `/root/rc-new`，同时带上 `config.yaml` 与 `data/` 数据文件；判定结果写入 `data/reality_targets.db`。
 
 ## 架构
 

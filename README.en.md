@@ -19,7 +19,7 @@
 
 RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc`, get a menu: lock SSH down first (key, port, password login off, with rollback), then check and tune TCP (TcpQuality / NodeQuality / tcpfit) and stand up the sing-box panel (singbox-lite, command `sb`) while you are there, then pick REALITY camouflage domains from the same box. Every stage lives in one menu, so you stop collecting one-off script URLs.
 
-The panel holds no scanning logic itself: picking targets is delegated to the bundled scanning engine. The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
+The panel holds no scanning logic itself: picking targets is delegated to the upstream scanning engine ([reality-checker-main](https://github.com/G1oow/reality-checker-main)). The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
 
 ## What the menu looks like
 
@@ -32,7 +32,7 @@ Running `rc` drops you on this screen: a banner, three status lines (OS, SSH por
  |  _ <| |___
  |_| \_\____|  VPS 聚合面板
 
-  rc v1.5.2   (实机执行)
+  rc v1.6.0   (实机执行)
 
   系统: Debian GNU/Linux 13  |  SSH 端口: 30000  |  密码登录: no
   公钥: 1 条  |  ufw: 已启用  |  拥塞控制: BBRv3
@@ -137,7 +137,7 @@ Run on its own, the engine keeps its full CLI surface; the panel is just one cal
 | `migrate [--from ...] [--to ...]` | Move the asset database between SQLite and PostgreSQL |
 | `version` | Print version, commit and build time |
 
-The engine's `install.sh` lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
+The engine's `install.sh` comes from the upstream repository and lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
 
 ## Architecture
 

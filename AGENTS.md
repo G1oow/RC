@@ -9,6 +9,7 @@
 - **RC 不是 RealityChecker 的缩写**。不要用 `RealityChecker` 当项目全称，也不要用 `reality-checker-main` 当示例命令——它是发布产物别名，只出现在脚本与 CI 内部。
 - 面板之外的扫描能力统一叫**「扫描引擎」**（代码与资产里的 `reality-checker` / `reasni` 是历史命名，属于功能路径，不要为了统一措辞去改它）。
 - 内置 HTTP API 与 Web 控制台已下线，不要恢复。
+- **引擎统一取上游**：面板（`rc reality` / `10) 重装扫描引擎`）与根目录 `install.sh` / `install.ps1` 都指向 `G1oow/reality-checker-main`，二进制、`config.yaml`、`data/` 均从上游取；本仓库的 `src/` 与 CI 产物不再作为引擎安装来源，不要改回自有地址。
 
 ## 仓库结构
 
@@ -16,7 +17,7 @@
 |---|---|
 | `rc.sh` | 面板本体。安装为 `/usr/local/bin/rc` 并建 `/usr/local/bin/RC` 软链；配置在 `/etc/rc-manager/rc.conf`（0600），日志 `/var/log/rc-manager.log`，备份 `/root/vps-init-backup` |
 | `vps-init.sh` | 兼容壳，只转发到 `rc.sh`，不放逻辑 |
-| `install.sh` / `install.ps1` | 引擎安装脚本（Linux / Windows），装到 `/root/rc-new` 或 `%USERPROFILE%\reality-checker` |
+| `install.sh` / `install.ps1` | 引擎安装脚本（Linux / Windows），从上游 `G1oow/reality-checker-main` 的 Release 取主程序，装到 `/root/rc-new` 或 `%USERPROFILE%\reality-checker` |
 | `config.yaml`、`data/` | 引擎配置与内置资产（规则库、GeoIP） |
 | `src/` | Go 扫描引擎：`internal/cmd` 子命令、`internal/core` 扫描与守护调度、`internal/detectors` 协议与伪装判定、`internal/storage` SQLite/PostgreSQL、`src/deploy/systemd` 服务单元 |
 | `src/doc/` | VitePress 文档站（`pnpm docs:dev`） |
@@ -91,7 +92,7 @@ go test ./...
 
 1. `go build ./...`、`go vet ./...`、`go test ./...` 全绿（Go 改动）。
 2. `bash -n` 通过（脚本改动）；`rc.sh` 的菜单/横幅可单独抽出 heredoc 跑一遍比对。
-3. 对外口径：`grep -n "RealityChecker\|reality-checker-main\|/api/" README.md README.en.md` 应为空。
+3. 对外口径：`grep -n "RealityChecker\|/api/" README.md README.en.md` 应为空；`reality-checker-main` 只能作为上游仓库地址出现，不得当项目名或示例命令。
 4. 文档内链指向真实存在的文件；`config.yaml` 里写的键名与代码一致。
 5. 不提交 `data/*.db`、`src/data/`、`.pi/` 等运行或工具产物。
 6. 发版前：`grep '^RC_VERSION=' rc.sh` 与即将打的 tag 版本号一致。
