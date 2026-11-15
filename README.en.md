@@ -122,10 +122,11 @@ Legacy arguments `0` / `0b` / `1` / `2` / `3` / `4` still work and map to the su
 
 `rc reality` makes sure the engine is present, then asks **every run** which family to scan (IPv4 / IPv6 / dual stack — the previous choice is never reused) before driving a scan. Domain selection criteria belong to the engine: same ASN or same facility, no public CDN, not a top-traffic site, a real TLS 1.3 + X25519 + HTTP/2 handshake, enough remaining certificate lifetime, low handshake latency. When the same ASN cannot fill the quota, the engine falls back to other ASNs in the same country plus locally cached assets. The default quota is 10 targets.
 
-Run on its own, the engine keeps its full CLI surface; the panel is just one caller:
+Run on its own, the engine is usable directly (the panel only calls `auto`); the usual subcommands:
 
 | Engine command | Effect |
 |---|---|
+| `ui [--family v4\|v6\|both] [--mode country --country DE] [-m N]` | The upstream TUI panel (`s` to start, `x` to stop), reachable through the `rcm` shortcut once the engine is installed; the `rc` panel never calls it |
 | `get <ip> [-n 5] [-s 3] [--fresh] [--json]` | Return ranked targets for an IP, cache first |
 | `auto <ip/cidr> [--limit 10] [--ipv4-only\|--ipv6-only] [-v]` | Resolve the input's ASN prefixes and scan them into the database; falls back to same-country ASNs when short |
 | `daemon [-t 500] [--interval 10] [--country US]` | Run the 24h multi-ASN scanning daemon |
@@ -137,7 +138,7 @@ Run on its own, the engine keeps its full CLI surface; the panel is just one cal
 | `migrate [--from ...] [--to ...]` | Move the asset database between SQLite and PostgreSQL |
 | `version` | Print version, commit and build time |
 
-The engine's `install.sh` comes from the upstream repository and lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
+The engine's `install.sh` comes from the upstream repository and lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`. The script also installs the `rcm` shortcut into `/usr/local/bin` (plus a copy inside the engine directory), and `rc` removes both when it uninstalls the engine. Upstream currently publishes Linux (amd64 / arm64) artifacts only.
 
 ## Architecture
 
@@ -183,15 +184,15 @@ The engine's `config.yaml` is independent of the panel; the keys that matter mos
 | `database.sqlite.path` | Asset database path, default `data/reality_targets.db` |
 | `reality_filter.scan_threads` | Scan concurrency, default `200` |
 | `reality_filter.scan_timeout` | Per-IP handshake timeout in seconds, default `3` |
-| `reality_filter.ipv6_budget` | Per-prefix probe budget for IPv6, default `4096` (host bits are sampled as pseudo-random IIDs) |
 | `reality_filter.require_no_cdn` / `require_no_cn` | Reject CDN edges and CN sites |
 | `reality_filter.check_gfw` | Toggle the static GFW list check |
 | `reality_filter.use_cache` / `cache_max_days` | Cache-first lookups and cache age, default 7 days |
 | `proxy.url` / `proxy.scanner` | Outbound proxy for engine downloads and scanning |
+| `network.family` | Address family for target dialing and verification: empty = unconstrained, `ipv4` / `ipv6` pin one family (the IPv4/IPv6 choice in `rc reality` only affects which ASN prefixes get pulled) |
 
 ## Upgrade note
 
-Earlier versions shipped an embedded HTTP API and web console. Both are gone: the panel, the CLI and the systemd daemon no longer listen on any port. If `DAEMON_OPTS` in `/etc/default/reasni` still carries `--port` / `--host` / `--token` / `--no-http`, the engine prints a notice and ignores them, but you should drop them and keep only `-t` and `--interval`.
+The panel itself listens on no port: `rc` only runs CLI commands and starts no service or web console. The upstream engine still ships a `serve` subcommand (REST/SSE + WebUI) and the `daemon` flags `--port` / `--host` / `--token` / `--no-http`; `rc` never calls them. If `DAEMON_OPTS` in `/etc/default/reasni` still carries `--port`, running `daemon` directly will really listen on that port — add `--no-http`, or drop those flags and keep only `-t` and `--interval`.
 
 ## Documentation
 

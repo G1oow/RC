@@ -56,6 +56,8 @@ SRC_SINGBOX_LITE='https://raw.githubusercontent.com/G1oow/singbox-lite/main/sing
 SB_BIN='/usr/local/bin/sb'
 # 扫描引擎统一指向上游 reality-checker-main：install.sh 及其下载的二进制、config.yaml、data/ 全部来自上游仓库
 SRC_ENGINE_INSTALL='https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.sh'
+# 上游 install.sh 会把 rcm 快捷指令装到 /usr/local/bin，并在引擎目录留一份副本
+ENGINE_LAUNCHER='/usr/local/bin/rcm'
 # 仓库文件地址给两种写法，兼容 RC.sh / rc.sh（raw 路径大小写敏感）
 SELF_URL_CANDIDATES=(
   'https://raw.githubusercontent.com/G1oow/RC/main/rc.sh'
@@ -710,34 +712,50 @@ record_tcpfit_baseline() {
 
 uninstall_engine() {
   step "卸载扫描引擎（$RC_DIR）"
-  if [[ ! -d $RC_DIR ]]; then ok '引擎目录不存在，跳过'; return 0; fi
+  local touched=0
 
-  local db="${RC_DIR}/data/reality_targets.db"
-  if [[ -s $db ]]; then
-    printf '    发现资产库 %s，卸载前备份到 /root/rc-backup/？[Y/n]: ' "$db"
-    case "$(read_ans y)" in
-      n | N | no | NO) ;;
-      *)
-        if [[ $DRY_RUN == 1 ]]; then
-          printf '    [dry] 备份 %s -> /root/rc-backup/\n' "$db"
-        else
-          mkdir -p /root/rc-backup && chmod 700 /root/rc-backup 2>/dev/null
-          if cp -a "$db" "/root/rc-backup/reality_targets.$(date +%Y%m%d-%H%M%S).db"; then
-            ok '资产库已备份到 /root/rc-backup'
+  if [[ -d $RC_DIR ]]; then
+    local db="${RC_DIR}/data/reality_targets.db"
+    if [[ -s $db ]]; then
+      printf '    发现资产库 %s，卸载前备份到 /root/rc-backup/？[Y/n]: ' "$db"
+      case "$(read_ans y)" in
+        n | N | no | NO) ;;
+        *)
+          if [[ $DRY_RUN == 1 ]]; then
+            printf '    [dry] 备份 %s -> /root/rc-backup/\n' "$db"
           else
-            warn '资产库备份失败'
+            mkdir -p /root/rc-backup && chmod 700 /root/rc-backup 2>/dev/null
+            if cp -a "$db" "/root/rc-backup/reality_targets.$(date +%Y%m%d-%H%M%S).db"; then
+              ok '资产库已备份到 /root/rc-backup'
+            else
+              warn '资产库备份失败'
+            fi
           fi
-        fi
-        ;;
-    esac
+          ;;
+      esac
+    fi
+
+    if ! run rm -rf -- "$RC_DIR"; then
+      warn "删除失败：$RC_DIR"
+      return 1
+    fi
+    ok "已删除 $RC_DIR"
+    touched=1
   fi
 
-  if ! run rm -rf -- "$RC_DIR"; then
-    warn "删除失败：$RC_DIR"
-    return 1
+  # 引擎目录里那份 rcm 随目录删掉；PATH 里这份是上游 install.sh 装的，
+  # 留着只会指向空目录，所以一并清理
+  if [[ -e $ENGINE_LAUNCHER ]]; then
+    if run rm -f -- "$ENGINE_LAUNCHER"; then
+      ok "已删除 $ENGINE_LAUNCHER"
+      touched=1
+    else
+      warn "删除失败：$ENGINE_LAUNCHER"
+    fi
   fi
-  ok "已删除 $RC_DIR"
-  log_record "uninstall engine dir=${RC_DIR}"
+
+  [[ $touched == 1 ]] || ok '引擎与 rcm 都不存在，跳过'
+  log_record "uninstall engine dir=${RC_DIR} rcm=${ENGINE_LAUNCHER}"
 }
 
 # tcpfit 是否因为用户选择「保留调优」而被留下，供 uninstall() 决定要不要连带删 iperf3
@@ -862,6 +880,7 @@ uninstall() {
   - $CONF_DIR（含持久化配置与安装标记）
   - $LOG_FILE
   - 扫描引擎：$RC_DIR
+  - rcm 快捷指令：$ENGINE_LAUNCHER（随引擎一起装、一起卸）
   - tcpfit：$(tcpfit_state)（卸载前会问是否回滚内核调优，默认不回滚、保留 tcpfit）
   - iperf3：$(iperf3_state)（tcpfit 被保留时一并保留）
 保留：
@@ -1687,7 +1706,8 @@ stage_sb() {
 ensure_reality_checker() {
   if [[ -x ${RC_DIR}/reality-checker-main ]]; then ok "已安装：${RC_DIR}/reality-checker-main"; return 0; fi
   warn "未安装，取上游 reality-checker-main 的 install.sh 装到 ${RC_DIR}"
-  run bash -c "curl -fsSL '${SRC_ENGINE_INSTALL}' | bash -s -- '${RC_DIR}'"
+  # 上游 install.sh 会在交互终端里直接进它的 TUI 面板，面板内调用要关掉，避免套两层菜单
+  run bash -c "curl -fsSL '${SRC_ENGINE_INSTALL}' | RC_NO_PANEL=1 bash -s -- '${RC_DIR}'"
   [[ $DRY_RUN == 1 || -x ${RC_DIR}/reality-checker-main ]] || die '扫描引擎安装失败'
 }
 
@@ -1754,7 +1774,7 @@ stage4() {
   else
     ( cd "$RC_DIR" && ./reality-checker-main auto "$SCAN_ENTRY_IP" --limit "$SCAN_LIMIT" $family_flag ) || warn '扫描退出码非 0'
   fi
-  warn '同 ASN 命中不足时会自动回退同地区（同国家）继续找；IPv6 扫不出来时先调大 ipv6_budget 或加 --threads'
+  warn '同 ASN 命中不足时会自动回退同地区（同国家）继续找；IPv6 网段扫得慢，必要时手动加 --threads'
   warn '从中挑 5 星里握手最低的 2~3 个，配节点前先各自试连'
   log_record "stage4 ip=${SCAN_ENTRY_IP} limit=${SCAN_LIMIT} family=${SCAN_FAMILY:-both}"
 }
