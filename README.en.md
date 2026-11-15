@@ -19,7 +19,7 @@
 
 RC is the single entry point for taking a fresh VPS from bare to usable. Run `rc`, get a menu: lock SSH down first (key, port, password login off, with rollback), then check and tune TCP (TcpQuality / NodeQuality / tcpfit) and stand up the sing-box panel (singbox-lite, command `sb`) while you are there, then pick REALITY camouflage domains from the same box. Every stage lives in one menu, so you stop collecting one-off script URLs.
 
-The panel holds no scanning logic itself: picking targets is delegated to the bundled scanning engine. The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
+The panel holds no scanning logic itself: picking targets is delegated to the upstream scanning engine ([reality-checker-main](https://github.com/G1oow/reality-checker-main)). The panel installs and drives that engine, and the engine also runs standalone as a CLI or a systemd daemon.
 
 ## What the menu looks like
 
@@ -137,7 +137,7 @@ Run on its own, the engine keeps its full CLI surface; the panel is just one cal
 | `migrate [--from ...] [--to ...]` | Move the asset database between SQLite and PostgreSQL |
 | `version` | Print version, commit and build time |
 
-The engine's `install.sh` lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
+The engine's `install.sh` comes from the upstream repository and lays it down in `/root/rc-new` together with `config.yaml` and the `data/` files; verdicts land in `data/reality_targets.db`.
 
 ## Architecture
 

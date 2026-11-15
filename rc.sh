@@ -54,7 +54,8 @@ SRC_NQ='https://run.NodeQuality.com'
 SRC_TCPFIT='https://raw.githubusercontent.com/Kylin010/tcpfit/main/tcpfit.sh'
 SRC_SINGBOX_LITE='https://raw.githubusercontent.com/G1oow/singbox-lite/main/singbox.sh'
 SB_BIN='/usr/local/bin/sb'
-SRC_RC_INSTALL='https://raw.githubusercontent.com/G1oow/RC/main/install.sh'
+# 扫描引擎统一指向上游 reality-checker-main：install.sh 及其下载的二进制、config.yaml、data/ 全部来自上游仓库
+SRC_ENGINE_INSTALL='https://raw.githubusercontent.com/G1oow/reality-checker-main/main/install.sh'
 # 仓库文件地址给两种写法，兼容 RC.sh / rc.sh（raw 路径大小写敏感）
 SELF_URL_CANDIDATES=(
   'https://raw.githubusercontent.com/G1oow/RC/main/rc.sh'
@@ -1685,8 +1686,8 @@ stage_sb() {
 
 ensure_reality_checker() {
   if [[ -x ${RC_DIR}/reality-checker-main ]]; then ok "已安装：${RC_DIR}/reality-checker-main"; return 0; fi
-  warn "未安装，先执行 install.sh 到 ${RC_DIR}"
-  run bash -c "curl -fsSL '${SRC_RC_INSTALL}' | bash -s -- '${RC_DIR}'"
+  warn "未安装，取上游 reality-checker-main 的 install.sh 装到 ${RC_DIR}"
+  run bash -c "curl -fsSL '${SRC_ENGINE_INSTALL}' | bash -s -- '${RC_DIR}'"
   [[ $DRY_RUN == 1 || -x ${RC_DIR}/reality-checker-main ]] || die '扫描引擎安装失败'
 }
 
