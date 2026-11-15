@@ -122,10 +122,11 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 
 `rc reality` 会先确保引擎就绪，然后**每次都询问**本次扫描的协议族（IPv4 / IPv6 / 双栈，不记忆上一次的选择），再调用引擎扫描并打印结果。目标域名的选型标准由引擎负责：同 ASN / 同机房、非公共 CDN、非热门大站、TLS 1.3 + X25519 + HTTP/2 握手真实可用、证书剩余有效期足够、握手延迟低；同 ASN 命中不足时回退到同国家（同地区）的其它 ASN 与本地历史资产。默认保留 10 个目标。
 
-引擎独立运行时保留完整 CLI 能力，面板只是它的一个调用方：
+引擎独立运行时也能直接用（面板只调用 `auto`），常用子命令：
 
 | 引擎命令 | 作用 |
 |---|---|
+| `ui [--family v4\|v6\|both] [--mode country --country DE] [-m N]` | 上游自带的终端面板（快捷键 `s` 开始、`x` 停止），装完引擎后可用快捷指令 `rcm` 进入；`rc` 面板不调用它 |
 | `get <ip> [-n 5] [-s 3] [--fresh] [--json]` | 按 IP 取星级目标，缓存优先 |
 | `auto <ip/cidr> [--limit 10] [--ipv4-only\|--ipv6-only] [-v]` | 查输入的 ASN 网段并并发扫描入库；同 ASN 不足时回退同国家 |
 | `daemon [-t 500] [--interval 10] [--country US]` | 24 小时全网 ASN 扫描守护进程 |
@@ -137,7 +138,7 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `migrate [--from ...] [--to ...]` | 在 SQLite 与 PostgreSQL 之间迁移资产库 |
 | `version` | 输出版本、提交与构建时间 |
 
-引擎的安装脚本 `install.sh` 取自上游仓库，把它装进 `/root/rc-new`，同时带上 `config.yaml` 与 `data/` 数据文件；判定结果写入 `data/reality_targets.db`。
+引擎的安装脚本 `install.sh` 取自上游仓库，把它装进 `/root/rc-new`，同时带上 `config.yaml` 与 `data/` 数据文件；判定结果写入 `data/reality_targets.db`。脚本还会把 `rcm` 快捷指令装到 `/usr/local/bin`（引擎目录里另留一份副本），`rc` 卸载引擎时一并清理。上游目前只发布 Linux（amd64 / arm64）产物。
 
 ## 架构
 
@@ -182,15 +183,15 @@ curl -fsSL https://raw.githubusercontent.com/G1oow/RC/main/rc.sh | bash
 | `database.sqlite.path` | 资产库路径，默认 `data/reality_targets.db` |
 | `reality_filter.scan_threads` | 扫描并发，默认 `200` |
 | `reality_filter.scan_timeout` | 单 IP 握手超时秒数，默认 `3` |
-| `reality_filter.ipv6_budget` | IPv6 单网段探针预算，默认 `4096`（IPv6 主机位按伪随机 IID 稀疏采样） |
 | `reality_filter.require_no_cdn` / `require_no_cn` | 剔除 CDN 节点与国内站点 |
 | `reality_filter.check_gfw` | 静态 GFW 名单开关 |
 | `reality_filter.use_cache` / `cache_max_days` | 缓存优先与缓存有效天数，默认 7 天 |
 | `proxy.url` / `proxy.scanner` | 引擎下载与扫描的出站代理 |
+| `network.family` | 目标连接与校验的协议族：空 = 不限定，`ipv4` / `ipv6` 只按该协议族校验（`rc reality` 里的 IPv4/IPv6 选择只作用于拉取的 ASN 网段） |
 
 ## 升级提示
 
-早期版本内置过 HTTP API 与 Web 控制台，现已整体移除：面板、CLI 与 systemd 守护进程不再监听任何端口。若 `/etc/default/reasni` 的 `DAEMON_OPTS` 里还留着 `--port` / `--host` / `--token` / `--no-http`，引擎会打印提示并忽略这些参数，建议直接删掉，只保留 `-t` 与 `--interval`。
+面板本身不监听端口：`rc` 只跑 CLI，不启服务、不开 Web 控制台。上游引擎里仍保留 `serve` 子命令（REST/SSE + WebUI）与 `daemon` 的 `--port` / `--host` / `--token` / `--no-http` 开关，`rc` 不会调用它们。如果你的 `/etc/default/reasni` 的 `DAEMON_OPTS` 里还留着 `--port`，直接跑 `daemon` 会真的在那个端口开监听；不想开就加 `--no-http`，或者把这些参数删掉，只保留 `-t` 与 `--interval`。
 
 ## 文档
 
